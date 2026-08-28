@@ -1,0 +1,94 @@
+{
+  "_": "Catálogo de lectures: lo consumen la biblioteca (home) y el menú del índice. Un lectures/index.local.json (gitignoreado) lo reemplaza por completo si existe — ahí vive tu biblioteca personal. Campos: slug (ID: carpeta + keys de notas/progreso), title, status (registrada = solo ficha, sin carpeta | transcripta = hay transcript.md | curada = hay curated.md), tags (key/value libres: materia, unidad, autor, clase… agrupan y filtran la biblioteca), audio (false = sin narración), words, source (archivo descargable dentro de la carpeta de la lecture), audioUrl (mp3 remoto — p. ej. un asset de GitHub Release — usado si audio.mp3 no está en la carpeta), revisiones ([{fecha, nota}] historial editorial).",
+  "lectures": [
+    {
+      "slug": "a-la-deriva",
+      "title": "A la deriva",
+      "status": "curada",
+      "tags": {
+        "materia": "Literatura rioplatense",
+        "autor": "Quiroga"
+      },
+      "words": 1057,
+      "source": "source.wiki",
+      "revisiones": [
+        {
+          "fecha": "2026-08-27",
+          "nota": "Demo de dominio público (Wikisource, autor †1937). Narración Chirp3-HD, 7,5 min."
+        }
+      ]
+    },
+    {
+      "slug": "el-matadero",
+      "title": "El matadero",
+      "status": "curada",
+      "tags": {
+        "materia": "Literatura rioplatense",
+        "autor": "Echeverría"
+      },
+      "audio": false,
+      "words": 6074,
+      "source": "source.wiki",
+      "revisiones": [
+        {
+          "fecha": "2026-08-27",
+          "nota": "Demo de dominio público (Wikisource, autor †1851). Sin narración: muestra el modo solo-lectura."
+        }
+      ]
+    },
+    {
+      "slug": "facundo-cap1",
+      "title": "Facundo · Capítulo I",
+      "status": "curada",
+      "tags": {
+        "materia": "Ensayo argentino",
+        "autor": "Sarmiento"
+      },
+      "audio": false,
+      "words": 6065,
+      "source": "source.wiki",
+      "revisiones": [
+        {
+          "fecha": "2026-08-27",
+          "nota": "Demo de dominio público (Wikisource, edición 1874, autor †1888). Sin narración; muestra índice por secciones."
+        }
+      ]
+    },
+    {
+      "slug": "hombre-mediocre",
+      "title": "La moral de los idealistas",
+      "status": "curada",
+      "tags": {
+        "materia": "Ensayo argentino",
+        "autor": "Ingenieros"
+      },
+      "words": 7377,
+      "source": "source.api.json",
+      "revisiones": [
+        {
+          "fecha": "2026-08-27",
+          "nota": "Demo de dominio público (Wikisource, edición 1913, autor †1925). Narración Chirp3-HD, 52,6 min."
+        }
+      ],
+      "audioUrl": "https://github.com/patoschi/escolib/releases/download/demo-audio/hombre-mediocre.mp3"
+    },
+    {
+      "slug": "apologia-socrates",
+      "title": "Apología de Sócrates",
+      "status": "curada",
+      "tags": {
+        "materia": "Filosofía clásica",
+        "autor": "Platón"
+      },
+      "words": 12834,
+      "source": "source.api.json",
+      "revisiones": [
+        {
+          "fecha": "2026-08-27",
+          "nota": "Demo de dominio público (Wikisource, trad. Azcárate 1871, traductor †1886). Narración Chirp3-HD, 78,9 min; ortografía de época con formas habladas corregidas."
+        }
+      ],
+      "audioUrl": "https://github.com/patoschi/escolib/releases/download/demo-audio/apologia-socrates.mp3"
+    }
+  ]
+}

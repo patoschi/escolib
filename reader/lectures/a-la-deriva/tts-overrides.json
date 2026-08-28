@@ -1,0 +1,7 @@
+{
+  "sentence_overrides": [
+    { "match": "A la deriva", "spoken": "A la deriva, un cuento de Horacio Quiroga." }
+  ],
+  "substrings": [],
+  "regex": []
+}

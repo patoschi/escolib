@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>escolib · textos de estudio que se leen, se escuchan y se anotan</title>
+<meta name="description" content="Kit open source para convertir textos de estudio en lecturas web con narración sincronizada y anotaciones transferibles. Un formato, un reader y workflows de curaduría con IA.">
+<link rel="icon" href="reader/icon-180.png">
+<style>
+:root{
+  --paper:#F6F5F1;
+  --surface:#FFFFFF;
+  --ink:#211F1A;
+  --ink-2:#6F6A5E;
+  --ink-3:#A29C8F;
+  --line:#E5E2D9;
+  --chrome:#26241E;
+  --chrome-ink:#F6F5F1;
+  --shadow:0 14px 40px rgba(33,31,26,.18), 0 3px 10px rgba(33,31,26,.10);
+  --shadow-soft:0 6px 24px rgba(33,31,26,.12);
+  --accent:#55A067;
+  --amber:#D9A11B;
+  --serif:'Iowan Old Style','Palatino Linotype',Palatino,'Book Antiqua',Georgia,'Noto Serif',serif;
+  --ui:-apple-system,BlinkMacSystemFont,system-ui,'Segoe UI',Roboto,'Helvetica Neue',sans-serif;
+}
+*{ box-sizing:border-box; }
+html{ scroll-behavior:smooth; }
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:var(--ui); line-height:1.6; font-size:16px;
+}
+a{ color:inherit; }
+.wrap{ max-width:1060px; margin:0 auto; padding:0 22px; }
+.wrap.narrow{ max-width:780px; }
+
+/* ---------- header ---------- */
+header{
+  position:sticky; top:0; z-index:10;
+  background:color-mix(in srgb, var(--paper) 88%, transparent);
+  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--line);
+}
+.nav{ display:flex; align-items:center; gap:18px; height:58px; }
+.logo{ display:flex; align-items:center; gap:10px; font-weight:700; letter-spacing:.14em; font-size:13px; text-transform:uppercase; text-decoration:none; }
+.logo .a{
+  width:30px; height:30px; border-radius:9px; background:var(--chrome); color:var(--chrome-ink);
+  font-family:var(--serif); font-style:italic; font-size:19px; display:grid; place-items:center;
+  text-transform:none;
+}
+.nav nav{ margin-left:auto; display:flex; gap:18px; align-items:center; font-size:14px; }
+.nav nav a{ text-decoration:none; color:var(--ink-2); }
+.nav nav a:hover{ color:var(--ink); }
+#lang{
+  font-family:var(--ui); font-size:12px; font-weight:600; cursor:pointer;
+  border:1px solid var(--line); background:var(--surface); color:var(--ink-2);
+  border-radius:999px; padding:5px 12px;
+}
+@media (max-width:640px){ .nav nav a.hide-sm{ display:none; } }
+
+/* ---------- hero ---------- */
+.hero{ padding:64px 0 26px; text-align:center; }
+.hero h1{
+  font-family:var(--serif); font-weight:600; font-size:clamp(34px, 6vw, 54px);
+  line-height:1.12; margin:0 auto 18px; max-width:22ch;
+}
+.hero p.lede{ max-width:62ch; margin:0 auto 28px; color:var(--ink-2); font-size:18px; }
+.cta{ display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin-bottom:22px; }
+.btn{
+  display:inline-block; text-decoration:none; font-weight:600; font-size:15px;
+  padding:13px 26px; border-radius:999px; border:1px solid var(--chrome);
+}
+.btn.primary{ background:var(--chrome); color:var(--chrome-ink); }
+.btn.primary:hover{ background:#000; }
+.btn.ghost{ background:var(--surface); color:var(--ink); }
+.btn.ghost:hover{ border-color:var(--ink-2); }
+/* honesty strip: what this actually requires */
+.honest{
+  max-width:660px; margin:0 auto; text-align:left;
+  display:flex; gap:12px; align-items:flex-start;
+  background:color-mix(in srgb, var(--amber) 9%, var(--surface));
+  border:1px solid color-mix(in srgb, var(--amber) 45%, var(--line));
+  border-radius:14px; padding:14px 18px; font-size:14.5px; color:var(--ink-2);
+}
+.honest b{ color:var(--ink); }
+.honest .ic{ font-size:18px; line-height:1.4; }
+.hero-shot{ margin:44px auto 0; max-width:980px; }
+.hero-shot img{
+  width:100%; height:auto; display:block; border-radius:14px;
+  border:1px solid var(--line); box-shadow:var(--shadow);
+}
+
+/* ---------- sections ---------- */
+section{ padding:64px 0; }
+section h2{
+  font-family:var(--serif); font-weight:600; font-size:clamp(26px,4vw,34px);
+  margin:0 0 8px; text-align:center;
+}
+section .sub{ text-align:center; color:var(--ink-2); max-width:62ch; margin:0 auto 40px; }
+
+/* alternating white bands between the paper sections */
+.prob, #uso, .install{ background:var(--surface); border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
+/* problem: prose over cards — everything left-aligned like the body */
+.prob h2{ text-align:left; }
+.prob .sub{ text-align:left; margin:0 0 26px; max-width:none; }
+.prob p{ font-size:16.5px; color:var(--ink-2); margin:0 0 18px; }
+.prob p b{ color:var(--ink); }
+.prob .kicker{
+  font-family:var(--serif); font-size:20px; line-height:1.45; color:var(--ink);
+  border-left:3px solid var(--accent); padding-left:18px; margin-top:26px;
+}
+
+/* pillars */
+.pillars{ display:grid; grid-template-columns:repeat(auto-fit, minmax(280px,1fr)); gap:16px; }
+.pillar{
+  background:var(--surface); border:1px solid var(--line); border-radius:16px;
+  padding:24px 22px 20px; box-shadow:0 2px 8px rgba(33,31,26,.04);
+  display:flex; flex-direction:column;
+}
+.pillar .num{
+  font-family:var(--serif); font-style:italic; font-size:30px; color:var(--accent);
+  line-height:1; margin-bottom:10px;
+}
+.pillar h3{ font-size:17px; margin:0 0 8px; }
+.pillar p{ margin:0 0 10px; color:var(--ink-2); font-size:14.5px; }
+.pillar .st{
+  margin-top:auto; font-size:11.5px; font-weight:600; letter-spacing:.06em;
+  text-transform:uppercase; color:var(--ink-3);
+}
+.pillar .st.on{ color:var(--accent); }
+.pillars-note{
+  text-align:center; color:var(--ink-2); font-size:14.5px; max-width:66ch;
+  margin:26px auto 0; font-style:italic;
+}
+
+/* steps (how it actually works) */
+.steps{ counter-reset:st; max-width:760px; margin:0 auto; padding:0; list-style:none; }
+.steps li{
+  counter-increment:st; position:relative;
+  padding:0 0 26px 58px; margin:0;
+}
+.steps li::before{
+  content:counter(st); position:absolute; left:0; top:-2px;
+  width:38px; height:38px; border-radius:50%;
+  background:var(--chrome); color:var(--chrome-ink);
+  font-family:var(--serif); font-style:italic; font-size:18px;
+  display:grid; place-items:center;
+}
+.steps li:not(:last-child)::after{
+  content:""; position:absolute; left:19px; top:40px; bottom:4px;
+  width:1.5px; background:var(--line);
+}
+.steps h3{ font-size:16px; margin:0 0 4px; }
+.steps p{ margin:0; color:var(--ink-2); font-size:14.5px; }
+.steps code, .prob code{
+  font-size:.92em; background:color-mix(in srgb, var(--ink) 7%, transparent);
+  padding:1px 5px; border-radius:5px;
+}
+.req{
+  max-width:760px; margin:0 auto 34px; font-size:14.5px; color:var(--ink-2);
+  background:var(--paper); border:1px solid var(--line); border-radius:14px;
+  padding:14px 18px;   /* paper on the white band, so the box stays visible */
+}
+.req b{ color:var(--ink); }
+.noai{
+  max-width:760px; margin:26px auto 0; font-size:14.5px; color:var(--ink-2);
+  border-left:3px solid var(--line); padding-left:16px;
+}
+
+/* screenshots duo */
+.shots{ display:flex; gap:26px; align-items:flex-start; justify-content:center; flex-wrap:wrap; }
+.shots figure{ margin:0; flex:1 1 420px; max-width:640px; min-width:0; }
+.shots figure.phone{ flex:0 1 250px; }
+.shots img{
+  width:100%; height:auto; display:block; border-radius:14px;
+  border:1px solid var(--line); box-shadow:var(--shadow-soft);
+}
+.shots figcaption{ font-size:13px; color:var(--ink-3); text-align:center; margin-top:12px; }
+
+/* install */
+.install{ background:var(--surface); border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
+.install .cols{ display:grid; grid-template-columns:repeat(auto-fit, minmax(300px,1fr)); gap:34px; align-items:start; }
+.install .cols > *{ min-width:0; }
+pre{
+  background:var(--chrome); color:var(--chrome-ink); border-radius:14px;
+  padding:20px 22px; overflow-x:auto; font-size:13.5px; line-height:1.7; margin:0;
+  min-width:0;
+}
+pre .c{ color:#9a958a; }
+code{
+  font-size:.92em; background:color-mix(in srgb, var(--ink) 7%, transparent);
+  padding:1px 5px; border-radius:5px;
+}
+pre code{ background:none; padding:0; font-size:inherit; }
+.install ol{ margin:0; padding-left:20px; color:var(--ink-2); font-size:15px; }
+.install ol li{ margin-bottom:10px; }
+.install ol b{ color:var(--ink); }
+
+/* vision / roadmap */
+.vision ul{ max-width:720px; margin:0 auto; padding:0; list-style:none; }
+.vision li{
+  padding:14px 0 14px 30px; position:relative; color:var(--ink-2); font-size:15px;
+  border-bottom:1px solid var(--line);
+}
+.vision li::before{
+  content:"→"; position:absolute; left:2px; color:var(--accent); font-weight:700;
+}
+.vision li b{ color:var(--ink); }
+.vision .nomodel{
+  text-align:center; margin:30px auto 0; max-width:64ch;
+  font-family:var(--serif); font-style:italic; font-size:17px; color:var(--ink-2);
+}
+
+/* docs */
+.docs .grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(240px,1fr)); gap:16px; }
+.docs a.card{
+  display:block; text-decoration:none;
+  background:var(--surface); border:1px solid var(--line); border-radius:16px;
+  padding:22px 22px 18px; box-shadow:0 2px 8px rgba(33,31,26,.04);
+}
+.docs a.card:hover{ border-color:var(--ink-3); }
+.docs .card small{ color:var(--ink-3); font-size:12px; letter-spacing:.06em; text-transform:uppercase; }
+.docs .card h3{ font-size:16px; margin:6px 0; }
+.docs .card p{ margin:0; color:var(--ink-2); font-size:14px; }
+
+/* footer */
+footer{ border-top:1px solid var(--line); padding:34px 0 48px; color:var(--ink-3); font-size:13.5px; text-align:center; }
+footer a{ color:var(--ink-2); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <a class="logo" href="#"><span class="a">e</span> escolib</a>
+    <nav>
+      <a href="#pilares" class="hide-sm" data-i="nav_pillars">Cómo está pensado</a>
+      <a href="#uso" class="hide-sm" data-i="nav_how">Cómo se usa</a>
+      <a href="#docs" data-i="nav_docs">Docs</a>
+      <a href="https://github.com/patoschi/escolib">GitHub</a>
+      <button id="lang" type="button" aria-label="Switch language">EN</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap hero">
+    <h1 data-i="hero_h1">Textos de estudio que se leen, se escuchan y se anotan</h1>
+    <p class="lede" data-i="hero_lede">escolib es un kit open source para convertir fragmentos de estudio en lecturas web con narración sincronizada por oración y notas ancladas al texto. La curaduría se hace en una sesión de IA con el camino ya trazado; el resultado se lee, se escucha y se anota en cualquier dispositivo.</p>
+    <div class="cta">
+      <a class="btn primary" href="reader/?doc=a-la-deriva" data-i="cta_demo">Probar la demo</a>
+      <a class="btn ghost" href="#uso" data-i="cta_install">Cómo se usa</a>
+    </div>
+    <div class="honest">
+      <span class="ic">⚙️</span>
+      <span data-i="honest">
+        <b>Optimizado para Claude Code y Google Cloud:</b> por ser un proyecto joven, el flujo de producción está documentado para esos dos proveedores — una sesión de Claude Code (comandos y contexto ya en el repo) y Google Cloud TTS para el audio (~US$2 por hora). Abrirlo a otros proveedores está en el roadmap. Leer, escuchar y anotar lo ya producido — como esta demo — no requiere nada: es HTML en el navegador.
+      </span>
+    </div>
+    <div class="hero-shot">
+      <img src="assets/narracion.png" alt="El reader en modo página con la narración sincronizada resaltando la oración activa" data-i-alt="alt_hero">
+    </div>
+  </div>
+
+  <section class="prob">
+    <div class="wrap narrow">
+      <h2 data-i="p_h2">Qué resuelve</h2>
+      <p class="sub" data-i="p_sub">No hay hoy una forma estándar de guardar — ni de compartir — un texto de estudio junto con su audio y sus anotaciones.</p>
+      <p data-i="p_1">Las herramientas existentes cubren cada una un pedazo. Los e-readers (Kindle, Apple Books) anotan bien pero no narran texto propio; las apps de audiolibros narran pero no están pensadas para estudiar ni anclan notas al texto; las herramientas de texto-a-voz leen en voz alta pero no dejan nada persistente. Algunos productos pagos se acercan — pero ninguno produce un resultado <b>transportable</b>: el texto fiel de un fragmento, su audio sincronizado oración por oración y las anotaciones, juntos, en un formato que se pueda mover.</p>
+      <p data-i="p_2">Sin un formato común, el trabajo de curar un texto — conseguir una buena edición, limpiarlo, narrarlo, anotarlo — <b>se repite</b> cada vez que alguien más estudia el mismo material.</p>
+      <p class="kicker" data-i="p_kicker">El objetivo de escolib es <b>estandarizar ese resultado para compartirlo</b>: que el trabajo se haga una vez y le sirva al siguiente.</p>
+    </div>
+  </section>
+
+  <section id="pilares">
+    <div class="wrap">
+      <h2 data-i="pi_h2">Cómo está pensado</h2>
+      <p class="sub" data-i="pi_sub">Tres partes que marcan hacia dónde va el proyecto. Hoy conviven en este repo; a futuro pueden ser piezas independientes.</p>
+      <div class="pillars">
+        <div class="pillar">
+          <span class="num">1</span>
+          <h3 data-i="pi1_t">Un formato estándar y transportable</h3>
+          <p data-i="pi1_p">La pieza de estudio como paquete: texto curado, audio con timestamps por oración (<code>timeline.json</code>), formas habladas y anotaciones exportables. Hoy es una carpeta con convenciones claras; el objetivo es un paquete versionado con import/export — mirando de cerca EPUB 3 Media Overlays, el estándar real de texto+audio sincronizado.</p>
+          <span class="st" data-i="pi1_s">EN DEFINICIÓN · el issue más importante del roadmap</span>
+        </div>
+        <div class="pillar">
+          <span class="num">2</span>
+          <h3 data-i="pi2_t">Un reader que lo reproduce</h3>
+          <p data-i="pi2_p">Una app web self-hosted y sin cuentas: dos modos de lectura, notas por teclado y por dictado ancladas al texto, narración sincronizada que sigue la vista incluso entre páginas, export de notas, offline de lo visitado. Hoy es un solo archivo HTML sin dependencias; PWA instalable y apps móviles, en el roadmap.</p>
+          <span class="st on" data-i="pi2_s">FUNCIONA HOY · es la demo</span>
+        </div>
+        <div class="pillar">
+          <span class="num">3</span>
+          <h3 data-i="pi3_t">Workflows de curaduría con IA</h3>
+          <p data-i="pi3_p">El camino trazado para producir contenido: sesiones de Claude Code con comandos (<code>/new-lecture</code>) y contexto que guían PDF → texto fiel → texto curado → narración, con ediciones reproducibles por script. Hoy está documentado para Claude Code y Google Cloud TTS; abrirlo a otros LLMs y agentes, y a otros proveedores de texto-a-voz (incluidos locales y gratuitos), está en el roadmap.</p>
+          <span class="st on" data-i="pi3_s">FUNCIONA HOY · con Claude Code</span>
+        </div>
+      </div>
+      <p class="pillars-note" data-i="pi_note">A escolib le falta mucho para llegar ahí — esto dice hacia dónde va cada parte, no lo que ya es.</p>
+    </div>
+  </section>
+
+  <section id="uso">
+    <div class="wrap">
+      <h2 data-i="u_h2">Cómo se usa</h2>
+      <p class="sub" data-i="u_sub">El flujo completo, con lo que se necesita y lo que cuesta.</p>
+      <div class="req" data-i="u_req">
+        <b>Necesitás:</b> Python 3 · una IA con acceso al repo (hoy: Claude Code — los comandos y el contexto vienen incluidos) · y solo para narrar: una cuenta de Google Cloud TTS (~US$2 por 80 minutos de audio, se paga una vez por texto).
+      </div>
+      <ol class="steps">
+        <li>
+          <h3 data-i="u1_t">Cloná y levantá el reader</h3>
+          <p data-i="u1_p"><code>git clone</code> + <code>python3 serve.py</code>. Ya tenés la biblioteca demo andando en tu red local — se lee desde el iPad o el celular sin instalar nada.</p>
+        </li>
+        <li>
+          <h3 data-i="u2_t">Abrí una sesión de Claude Code y pedile /new-lecture</h3>
+          <p data-i="u2_p">Le das tu PDF (el apunte, el capítulo, el fragmento de cátedra) y la sesión te guía: evalúa la fuente, extrae el texto fiel por script reproducible, lo cura para estudio con ediciones documentadas, y prepara las formas habladas para la síntesis. Vos decidís en los casos dudosos.</p>
+        </li>
+        <li>
+          <h3 data-i="u3_t">Narralo (opcional)</h3>
+          <p data-i="u3_p"><code>python3 narrate.py &lt;slug&gt;</code> sintetiza por oración con timestamps exactos y cache — corregir una frase después cuesta centavos, no el texto entero. Sin audio, todo lo demás funciona igual.</p>
+        </li>
+        <li>
+          <h3 data-i="u4_t">Estudiá</h3>
+          <p data-i="u4_p">Leé en scroll o por páginas, escuchá con la vista siguiendo al audio, anotá con doble toque, dictá comentarios, exportá tus notas con contexto para una sesión de estudio con IA.</p>
+        </li>
+      </ol>
+      <p class="noai" data-i="u_noai">El reader funciona sin IA para leer lectures ya producidas. La IA hace falta para <i>producir</i> contenido nuevo, y es probable que siga siendo así: la curaduría es el tipo de trabajo que una sesión guiada resuelve bien.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2 data-i="s_h2">El mismo reader en todos lados</h2>
+      <p class="sub" data-i="s_sub">Un solo archivo HTML sin dependencias: biblioteca con estantes y filtros en desktop, notas con dictado en el teléfono.</p>
+      <div class="shots">
+        <figure>
+          <img src="assets/biblioteca.png" alt="La biblioteca: estantes por materia con tarjetas de cada texto" data-i-alt="alt_lib">
+          <figcaption data-i="cap_lib">La biblioteca: estantes, filtros por tags y avance de cada texto.</figcaption>
+        </figure>
+        <figure class="phone">
+          <img src="assets/nota.png" alt="Una nota con resaltado, comentario y dictado por voz en un teléfono" data-i-alt="alt_note">
+          <figcaption data-i="cap_note">Resaltado con manijas, comentario y dictado por voz, en el celular.</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section class="install">
+    <div class="wrap">
+      <h2 data-i="i_h2">Quick start</h2>
+      <div class="cols">
+        <pre><code><span class="c"># clonar y servir (la demo ya está adentro)</span>
+git clone https://github.com/patoschi/escolib.git
+cd escolib/reader
+python3 serve.py
+<span class="c"># → http://localhost:8123/</span>
+
+<span class="c"># producir una lecture nueva: desde el repo,</span>
+<span class="c"># en una sesión de Claude Code</span>
+/new-lecture mi-apunte.pdf</code></pre>
+        <ol>
+          <li data-i="i_s1"><b>La demo incluye cinco textos</b> de dominio público, tres con narración — para probar todo sin producir nada.</li>
+          <li data-i="i_s2"><b>El tutorial completo</b> del flujo con Claude Code está en <a href="https://github.com/patoschi/escolib/blob/main/docs/tutorial.md">docs/tutorial.md</a>: una sesión real comentada, de un PDF de cátedra a la lecture narrada.</li>
+          <li data-i="i_s3"><b>¿Otra IA?</b> El contexto del repo (<code>CLAUDE.md</code>, <code>AGENTS.md</code>) es legible por cualquier agente; adaptar el flujo a otros proveedores está en el roadmap.</li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <section class="vision">
+    <div class="wrap">
+      <h2 data-i="v_h2">Hacia dónde va</h2>
+      <p class="sub" data-i="v_sub">En orden de importancia. Todo vive como issues en el repo.</p>
+      <ul>
+        <li data-i="v_1"><b>El paquete compartible</b> — formalizar el formato de lecture (manifest, versionado, import/export desde el reader) y evaluar la convergencia con EPUB 3 Media Overlays. Es el pilar 1 hecho realidad: curás una vez, compartís el paquete.</li>
+        <li data-i="v_2"><b>Descarga de audio por lecture</b> — narraciones remotas cacheables para escuchar offline, sin repos pesados.</li>
+        <li data-i="v_3"><b>Curaduría multi-IA</b> — documentar y adaptar los workflows a otros proveedores además de Claude Code.</li>
+        <li data-i="v_4"><b>Síntesis multi-proveedor</b> — hoy GCP Chirp3-HD; abstraer la capa de TTS (incluyendo opciones locales y gratuitas) conservando los timestamps por oración.</li>
+        <li data-i="v_5"><b>E-readers y apps</b> — si el formato converge a EPUB3+SMIL, los lectores compatibles vienen gratis; PWA instalable mientras tanto.</li>
+      </ul>
+      <p class="nomodel" data-i="v_nomodel">No hay un modelo de negocio detrás: es open source colaborativo. La idea es simple — que curar un texto de estudio se haga una vez, bien, y se comparta.</p>
+    </div>
+  </section>
+
+  <section id="docs" class="docs">
+    <div class="wrap">
+      <h2 data-i="d_h2">Documentación</h2>
+      <p class="sub" data-i="d_sub">Todo el proyecto está documentado para personas y para agentes de IA.</p>
+      <div class="grid">
+        <a class="card" href="https://github.com/patoschi/escolib/blob/main/docs/tutorial.md"><small>Tutorial</small><h3 data-i="d0_t">De un PDF a una lecture</h3><p data-i="d0_p">El flujo completo con una sesión de Claude Code, paso a paso.</p></a>
+        <a class="card" href="https://github.com/patoschi/escolib#readme"><small>README</small><h3 data-i="d1_t">Visión general</h3><p data-i="d1_p">Qué es, cómo se usa, qué se versiona.</p></a>
+        <a class="card" href="https://github.com/patoschi/escolib/blob/main/reader/README.md"><small>reader/</small><h3 data-i="d2_t">El reader</h3><p data-i="d2_p">Features, decisiones de arquitectura y cómo verificar cambios.</p></a>
+        <a class="card" href="https://github.com/patoschi/escolib/blob/main/reader/lectures/README.md"><small>lectures/</small><h3 data-i="d3_t">Pipeline de textos</h3><p data-i="d3_p">PDF → transcript → curado → narración, en detalle.</p></a>
+        <a class="card" href="https://github.com/patoschi/escolib/issues"><small>Issues</small><h3 data-i="d4_t">Roadmap</h3><p data-i="d4_p">Los mismos puntos de arriba, como issues del repo.</p></a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span data-i="ft_1">MIT · Los textos de la demo son de dominio público (Wikisource)</span> ·
+    <a href="https://github.com/patoschi/escolib">GitHub</a> ·
+    <span data-i="ft_2">hecho con Claude Code</span>
+  </div>
+</footer>
+
+<script>
+(() => {
+'use strict';
+const EN = {
+  nav_pillars: 'How it is designed', nav_how: 'How it works', nav_docs: 'Docs',
+  hero_h1: 'Study texts you can read, listen to and annotate',
+  hero_lede: 'escolib is an open source kit that turns study excerpts into web readings with sentence-synced narration and notes anchored to the text. Curation happens in an AI session with the path already laid out; the result can be read, listened to and annotated on any device.',
+  cta_demo: 'Try the demo', cta_install: 'How it works',
+  honest: '<b>Optimized for Claude Code and Google Cloud:</b> as a young project, the production flow is documented for those two providers — a Claude Code session (commands and context already in the repo) and Google Cloud TTS for the audio (~US$2 per hour). Opening it to more providers is on the roadmap. Reading, listening to and annotating what is already produced — like this demo — requires nothing: it is HTML in the browser.',
+  alt_hero: 'The reader in page mode, synchronized narration highlighting the active sentence',
+  p_h2: 'What it solves',
+  p_sub: 'There is no standard way today to keep — or share — a study text together with its audio and its annotations.',
+  p_1: 'Existing tools each cover one corner. E-readers (Kindle, Apple Books) annotate well but will not narrate your own texts; audiobook apps narrate but are not built for studying and anchor nothing to the text; text-to-speech tools read aloud but leave nothing persistent. Some paid products come close — but none produces a <b>transportable</b> result: the faithful text of an excerpt, its sentence-synced audio and the annotations, together, in a format that can move.',
+  p_2: 'Without a common format, the work of curating a text — finding a good edition, cleaning it, narrating it, annotating it — <b>gets repeated</b> every time someone else studies the same material.',
+  p_kicker: 'escolib’s goal is to <b>standardize that result so it can be shared</b>: do the work once, and let it serve the next person.',
+  pi_h2: 'How it is designed',
+  pi_sub: 'Three parts that set where the project is going. Today they live in this repo; they can become independent pieces.',
+  pi1_t: 'A standard, transportable format',
+  pi1_p: 'The study piece as a package: curated text, audio with per-sentence timestamps (<code>timeline.json</code>), spoken forms and exportable annotations. Today it is a folder with clear conventions; the goal is a versioned package with import/export — looking closely at EPUB 3 Media Overlays, the actual standard for synced text+audio.',
+  pi1_s: 'BEING DEFINED · the most important issue on the roadmap',
+  pi2_t: 'A reader that plays it',
+  pi2_p: 'A self-hosted, account-free web app: two reading modes, keyboard and voice notes anchored to the text, synchronized narration that follows the view even across pages, note export, offline for what you have visited. Today a single dependency-free HTML file; installable PWA and mobile apps are on the roadmap.',
+  pi2_s: 'WORKS TODAY · it is the demo',
+  pi3_t: 'AI curation workflows',
+  pi3_p: 'The laid-out path for producing content: Claude Code sessions with commands (<code>/new-lecture</code>) and context that guide PDF → faithful text → curated text → narration, with script-reproducible edits. Today documented for Claude Code and Google Cloud TTS; opening it to other LLMs and agents, and to other text-to-speech providers (including local and free ones), is on the roadmap.',
+  pi3_s: 'WORKS TODAY · with Claude Code',
+  pi_note: 'escolib has a long way to go — this says where each part is headed, not what it already is.',
+  u_h2: 'How it is used',
+  u_sub: 'The complete flow, with what you need and what it costs.',
+  u_req: '<b>You need:</b> Python 3 · an AI with access to the repo (today: Claude Code — commands and context included) · and only if you narrate: a Google Cloud TTS account (~US$2 per 80 minutes of audio, paid once per text).',
+  u1_t: 'Clone and serve the reader',
+  u1_p: '<code>git clone</code> + <code>python3 serve.py</code>. The demo library is running on your local network — read from a tablet or phone without installing anything.',
+  u2_t: 'Open a Claude Code session and ask for /new-lecture',
+  u2_p: 'Hand it your PDF (the course handout, the chapter, the excerpt) and the session guides you: it evaluates the source, extracts the faithful text with a reproducible script, curates it for study with documented edits, and prepares the spoken forms for synthesis. You decide the borderline cases.',
+  u3_t: 'Narrate it (optional)',
+  u3_p: '<code>python3 narrate.py &lt;slug&gt;</code> synthesizes per sentence with exact timestamps and a cache — fixing one phrase later costs cents, not the whole text. Without audio, everything else works the same.',
+  u4_t: 'Study',
+  u4_p: 'Read in scroll or pages, listen with the view following the audio, annotate with a double tap, dictate comments, export your notes with context for an AI study session.',
+  u_noai: 'The reader needs no AI for reading already-produced lectures. AI is needed to <i>produce</i> new content, and that will likely remain so: curation is the kind of work a guided session solves well.',
+  s_h2: 'The same reader everywhere',
+  s_sub: 'A single dependency-free HTML file: a library with shelves and filters on desktop, notes with voice dictation on the phone.',
+  alt_lib: 'The library: shelves by subject with a card per text',
+  cap_lib: 'The library: shelves, tag filters and per-text progress.',
+  alt_note: 'A note with highlight, comment and voice dictation on a phone',
+  cap_note: 'Highlight with handles, comment and voice dictation, on the phone.',
+  i_h2: 'Quick start',
+  i_s1: '<b>The demo ships five public-domain texts</b>, three narrated — to try everything without producing anything.',
+  i_s2: '<b>The full tutorial</b> of the Claude Code flow is at <a href="https://github.com/patoschi/escolib/blob/main/docs/tutorial.md">docs/tutorial.md</a>: a real annotated session, from a course PDF to the narrated lecture.',
+  i_s3: '<b>Another AI?</b> The repo context (<code>CLAUDE.md</code>, <code>AGENTS.md</code>) is readable by any agent; adapting the flow to other providers is on the roadmap.',
+  v_h2: 'Where it is going',
+  v_sub: 'In order of importance. All of it lives as issues in the repo.',
+  v_1: '<b>The shareable package</b> — formalize the lecture format (manifest, versioning, import/export from the reader) and evaluate convergence with EPUB 3 Media Overlays. Pillar 1 made real: curate once, share the package.',
+  v_2: '<b>Per-lecture audio download</b> — remote narrations cacheable for offline listening, without heavy repos.',
+  v_3: '<b>Multi-AI curation</b> — document and adapt the workflows to providers beyond Claude Code.',
+  v_4: '<b>Multi-provider synthesis</b> — GCP Chirp3-HD today; abstract the TTS layer (including free local options) while keeping per-sentence timestamps.',
+  v_5: '<b>E-readers and apps</b> — if the format converges to EPUB3+SMIL, compatible readers come for free; installable PWA meanwhile.',
+  v_nomodel: 'There is no business model behind this: it is collaborative open source. The idea is simple — curate a study text once, well, and share it.',
+  d_h2: 'Documentation',
+  d_sub: 'The whole project is documented for people and for AI agents.',
+  d0_t: 'From a PDF to a lecture', d0_p: 'The complete flow with a Claude Code session, step by step.',
+  d1_t: 'Overview', d1_p: 'What it is, how to use it, what gets versioned.',
+  d2_t: 'The reader', d2_p: 'Features, architecture decisions and how to verify changes.',
+  d3_t: 'Text pipeline', d3_p: 'PDF → transcript → curated → narration, in detail.',
+  d4_t: 'Roadmap', d4_p: 'The same points above, as repo issues.',
+  ft_1: 'MIT · The demo texts are in the public domain (Wikisource)',
+  ft_2: 'built with Claude Code',
+};
+const ES = {};   // filled from the initial DOM
+const KEY = 'escolib.landing.lang';
+document.querySelectorAll('[data-i]').forEach(el => { ES[el.dataset.i] = el.innerHTML; });
+document.querySelectorAll('[data-i-alt]').forEach(el => { ES[el.dataset.iAlt] = el.alt; });
+function apply(lang) {
+  const d = lang === 'en' ? EN : ES;
+  document.querySelectorAll('[data-i]').forEach(el => { if (d[el.dataset.i] != null) el.innerHTML = d[el.dataset.i]; });
+  document.querySelectorAll('[data-i-alt]').forEach(el => { if (d[el.dataset.iAlt] != null) el.alt = d[el.dataset.iAlt]; });
+  document.documentElement.lang = lang;
+  document.getElementById('lang').textContent = lang === 'en' ? 'ES' : 'EN';
+  try { localStorage.setItem(KEY, lang); } catch {}
+}
+// Spanish by default (the demo texts are in Spanish); EN via the toggle
+let lang = 'es';
+try { lang = localStorage.getItem(KEY) || 'es'; } catch {}
+if (lang === 'en') apply('en');
+document.getElementById('lang').addEventListener('click', () => {
+  apply(document.documentElement.lang === 'en' ? 'es' : 'en');
+});
+})();
+</script>
+
+</body>
+</html>
