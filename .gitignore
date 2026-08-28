@@ -1,0 +1,46 @@
+# system
+.DS_Store
+__pycache__/
+
+# Claude Code: shared commands are versioned, local settings are not
+.claude/*
+!.claude/commands/
+
+# personal/local context — not part of the public repo
+CLAUDE.local.md
+temp/
+
+# historical resources (monolithic audios that predate the reader)
+resources/
+
+# lecture content: copyrighted texts, heavy audio files, PDFs.
+# Loose files in lectures/ (narrate.py, README.md, index.json) ARE versioned —
+# except corpus-specific build scripts, which quote their source texts.
+reader/lectures/*/
+reader/lectures/build_*.py
+
+# personal library catalog (overrides the public index.json entirely)
+reader/lectures/index.local.json
+
+# demo lectures: public-domain texts, versioned on purpose
+# (the synthesis cache inside them stays out)
+!reader/lectures/a-la-deriva/
+!reader/lectures/el-matadero/
+!reader/lectures/facundo-cap1/
+!reader/lectures/hombre-mediocre/
+!reader/lectures/apologia-socrates/
+reader/lectures/*/build/
+
+# narration audio is a heavy build artifact: only the small a-la-deriva
+# sample ships in the repo; the rest deploys to the demo site apart
+reader/lectures/hombre-mediocre/audio.mp3
+reader/lectures/apologia-socrates/audio.mp3
+
+# stray images and PDFs (screenshots, scans)
+*.png
+*.pdf
+
+# …except the PWA icons (part of the app shell) and landing assets
+!reader/icon-180.png
+!reader/icon-512.png
+!assets/*.png

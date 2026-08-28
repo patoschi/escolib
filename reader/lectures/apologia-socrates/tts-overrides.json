@@ -1,0 +1,40 @@
+{
+  "_": "El display conserva la ortografía de 1871; estos regex solo corrigen la PRONUNCIACIÓN (formas sin tilde que el TTS acentuaría mal). Case-insensitive con reemplazo en minúscula: al TTS le da igual la mayúscula.",
+  "sentence_overrides": [
+    { "match": "Apología de Sócrates", "spoken": "Apología de Sócrates. De Platón, en la traducción de Patricio de Azcárate." },
+    { "match": "Argumento", "spoken": "Argumento del traductor." }
+  ],
+  "substrings": [],
+  "regex": [
+    ["(?i)(?<=[a-záéíóúü])cion\\b", "ción"],
+    ["(?i)(?<=[a-záéíóúü])sion\\b", "sión"],
+    ["(?i)\\brazon\\b", "razón"],
+    ["(?i)\\bcorazon\\b", "corazón"],
+    ["(?i)\\bdespues\\b", "después"],
+    ["(?i)\\btambien\\b", "también"],
+    ["(?i)\\bhabia(n?)\\b", "había\\1"],
+    ["(?i)\\bpodia(n?)\\b", "podía\\1"],
+    ["(?i)\\bdebia(n?)\\b", "debía\\1"],
+    ["(?i)\\bseria(n?)\\b", "sería\\1"],
+    ["(?i)\\bvivia(n?)\\b", "vivía\\1"],
+    ["(?i)\\bdecia(n?)\\b", "decía\\1"],
+    ["(?i)\\btenia(n?)\\b", "tenía\\1"],
+    ["(?i)\\bvenia(n?)\\b", "venía\\1"],
+    ["(?i)\\bqueria(n?)\\b", "quería\\1"],
+    ["(?i)\\b([a-zá-ú]{2,})ais\\b", "\\1áis"],
+    ["(?i)\\b([a-zá-ú]{3,})eis\\b", "\\1éis"],
+    ["(?i)\\bdia\\b", "día"],
+    ["(?i)\\bdias\\b", "días"],
+    ["(?i)\\bmio(s?)\\b", "mío\\1"],
+    ["(?i)\\bmia(s?)\\b", "mía\\1"],
+    ["(?i)\\bningun\\b", "ningún"],
+    ["(?i)\\balgun\\b", "algún"],
+    ["(?i)\\bsegun\\b", "según"],
+    ["(?i)\\basi\\b", "así"],
+    ["(?i)\\baqui\\b", "aquí"],
+    ["(?i)\\balli\\b", "allí"],
+    ["(?i)\\boir\\b", "oír"],
+    ["(?i)\\bjamas\\b", "jamás"],
+    ["(?i)\\bquiza(s?)\\b", "quizá\\1"]
+  ]
+}

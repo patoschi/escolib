@@ -1,0 +1,3530 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="referrer" content="no-referrer">
+<title>escolib · Lector</title>
+</head>
+<body>
+
+<style>
+/* ============================================================
+   escolib · Reader — prototype v4
+   Architecture:
+   · The FAB is a note-mode SWITCH (on/off). Nothing more.
+   · In note mode: click/tap = note anchored to that line, in the
+     nearby margin; double click/tap = highlights the word and gives
+     handles to stretch the fragment. No long-press.
+   · A note is ONE entity with ONE icon in the margin (bubble if
+     it has a comment, marker if highlight-only) and ONE editor
+     (popover next to the icon) used both to create and to edit.
+   · Everything autosaves. An empty note discards itself.
+   ============================================================ */
+
+:root{
+  --paper:#F6F5F1;
+  --surface:#FFFFFF;
+  --ink:#211F1A;
+  --ink-2:#6F6A5E;
+  --ink-3:#A29C8F;
+  --line:#E5E2D9;
+  --chrome:#26241E;
+  --chrome-ink:#F6F5F1;
+  --shadow:0 14px 40px rgba(33,31,26,.18), 0 3px 10px rgba(33,31,26,.10);
+  --shadow-soft:0 6px 24px rgba(33,31,26,.12);
+  --tag-amber:#D9A11B;
+  --tag-green:#55A067;
+  --tag-blue:#4A8FC4;
+  --tag-pink:#CC6396;
+  --tag-none:#8E887B;
+  --danger:#B4503C;
+  --hl-mix:32%;
+  --serif:'Iowan Old Style','Palatino Linotype',Palatino,'Book Antiqua',Georgia,'Noto Serif',serif;
+  --ui:-apple-system,BlinkMacSystemFont,system-ui,'Segoe UI',Roboto,'Helvetica Neue',sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --paper:#171610;
+    --surface:#23211A;
+    --ink:#EAE7DC;
+    --ink-2:#A59F8F;
+    --ink-3:#6E695C;
+    --line:#2E2B22;
+    --chrome:#EAE7DC;
+    --chrome-ink:#1C1A14;
+    --shadow:0 14px 40px rgba(0,0,0,.5), 0 3px 10px rgba(0,0,0,.35);
+    --shadow-soft:0 6px 24px rgba(0,0,0,.4);
+    --tag-amber:#E2B23E;
+    --tag-green:#69B37D;
+    --tag-blue:#65A3D3;
+    --tag-pink:#D97CA9;
+    --tag-none:#8B8574;
+    --danger:#D4705A;
+    --hl-mix:30%;
+  }
+}
+:root[data-theme="light"]{
+  --paper:#F6F5F1; --surface:#FFFFFF; --ink:#211F1A; --ink-2:#6F6A5E; --ink-3:#A29C8F;
+  --line:#E5E2D9; --chrome:#26241E; --chrome-ink:#F6F5F1;
+  --shadow:0 14px 40px rgba(33,31,26,.18), 0 3px 10px rgba(33,31,26,.10);
+  --shadow-soft:0 6px 24px rgba(33,31,26,.12);
+  --tag-amber:#D9A11B; --tag-green:#55A067; --tag-blue:#4A8FC4; --tag-pink:#CC6396;
+  --tag-none:#8E887B; --danger:#B4503C; --hl-mix:32%;
+}
+:root[data-theme="dark"]{
+  --paper:#171610; --surface:#23211A; --ink:#EAE7DC; --ink-2:#A59F8F; --ink-3:#6E695C;
+  --line:#2E2B22; --chrome:#EAE7DC; --chrome-ink:#1C1A14;
+  --shadow:0 14px 40px rgba(0,0,0,.5), 0 3px 10px rgba(0,0,0,.35);
+  --shadow-soft:0 6px 24px rgba(0,0,0,.4);
+  --tag-amber:#E2B23E; --tag-green:#69B37D; --tag-blue:#65A3D3; --tag-pink:#D97CA9;
+  --tag-none:#8B8574; --danger:#D4705A; --hl-mix:30%;
+}
+
+*{ box-sizing:border-box; }
+html,body{ margin:0; padding:0; }
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font-family:var(--ui);
+  -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+button{ font-family:var(--ui); border:0; background:none; color:inherit; cursor:pointer; padding:0; }
+button:focus-visible, a:focus-visible, textarea:focus-visible{
+  outline:2px solid var(--ink); outline-offset:2px; border-radius:4px;
+}
+
+/* ---------- progress ---------- */
+#progress{
+  position:fixed; top:0; left:0; height:2px; width:0%;
+  background:var(--ink); z-index:60;
+}
+
+/* ---------- top bar ---------- */
+#topbar{
+  position:fixed; top:0; left:0; right:0; z-index:50;
+  display:flex; align-items:center; justify-content:space-between;
+  padding:10px 18px;
+  background:color-mix(in srgb, var(--paper) 82%, transparent);
+  -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px);
+  border-bottom:1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  transform:translateY(0);
+  transition:transform .32s cubic-bezier(.3,.7,.3,1);
+}
+#topbar.hidden{ transform:translateY(-110%); }
+.brand{ display:flex; align-items:center; gap:10px; }
+.brand-badge{
+  width:26px; height:26px; border-radius:7px;
+  background:var(--ink); color:var(--paper);
+  font-family:var(--serif); font-style:italic; font-size:17px; line-height:26px;
+  text-align:center; font-weight:600;
+}
+.brand-name{
+  font-size:12px; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--ink-2); font-weight:600;
+}
+.brand-name b{ color:var(--ink); font-weight:600; }
+.topbar-actions{ display:flex; align-items:center; gap:4px; }
+.hdr-btn{
+  position:relative; width:40px; height:32px; border-radius:8px;
+  display:flex; align-items:center; justify-content:center; color:var(--ink);
+}
+.hdr-btn:hover{ background:color-mix(in srgb, var(--ink) 8%, transparent); }
+#btn-size{ font-family:var(--serif); font-size:16px; line-height:1; }
+.hdr-badge{
+  position:absolute; top:1px; right:2px;
+  min-width:15px; height:15px; padding:0 4px;
+  border-radius:8px; background:var(--ink); color:var(--paper);
+  font-size:9.5px; font-weight:700; line-height:15px; text-align:center;
+}
+
+/* ---------- note-mode chip ---------- */
+#modechip{
+  position:fixed; z-index:55; top:50px; left:50%; transform:translateX(-50%);
+  display:none; align-items:center; gap:7px;
+  background:var(--chrome); color:var(--chrome-ink);
+  font-size:10.5px; font-weight:500; opacity:.92;
+  padding:4px 10px; border-radius:14px;
+  box-shadow:var(--shadow-soft);
+  max-width:calc(100vw - 24px); text-align:center; white-space:nowrap;
+  overflow:hidden; text-overflow:ellipsis;
+}
+#modechip.on{ display:flex; animation:chipin .3s cubic-bezier(.3,1.2,.4,1) both; }
+@keyframes chipin{ from{ opacity:0; transform:translateX(-50%) translateY(-8px);} to{ opacity:1; transform:translateX(-50%);} }
+#modechip .pulse{
+  width:6px; height:6px; border-radius:50%; flex:none;
+  background:var(--mode-tag-c, var(--tag-amber));
+  animation:pulse 1.6s ease-in-out infinite;
+}
+@keyframes pulse{ 0%,100%{ box-shadow:0 0 0 0 color-mix(in srgb, var(--mode-tag-c,var(--tag-amber)) 50%, transparent);} 50%{ box-shadow:0 0 0 5px transparent;} }
+@media (max-width:560px){ #modechip{ font-size:10px; padding:4px 9px; } }
+
+/* ---------- document ---------- */
+main{ display:flex; justify-content:center; }
+#doc{
+  --active-tag:var(--tag-amber);
+  --fs:19px;
+  position:relative;
+  width:100%; max-width:680px;
+  padding:96px 28px 200px;
+  font-family:var(--serif);
+  font-size:var(--fs);
+  line-height:1.72;
+  touch-action:manipulation;       /* no double-tap zoom */
+}
+:root[data-size="0"] #doc{ --fs:17px; }
+:root[data-size="2"] #doc{ --fs:21px; }
+#doc ::selection{ background:color-mix(in srgb, var(--active-tag) 30%, transparent); }
+#doc.mode{
+  cursor:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='26' height='26' viewBox='0 0 26 26'><path d='M3 23l2.2-6.2L18 4l4 4L9.2 20.8z' fill='%23211F1A' stroke='%23F6F5F1' stroke-width='1.6' stroke-linejoin='round'/></svg>") 3 23, text;
+}
+#doc.mode ::selection{ background:color-mix(in srgb, var(--active-tag) 48%, transparent); }
+
+.doc-eyebrow{
+  font-family:var(--ui); font-size:11.5px; font-weight:600;
+  letter-spacing:.16em; text-transform:uppercase; color:var(--ink-2);
+  margin:0 0 14px;
+  animation:rise .7s cubic-bezier(.2,.7,.3,1) both;
+}
+#doc h1{
+  font-size:clamp(1.65rem, 5.4vw, 2.15rem);
+  line-height:1.22; font-weight:600; letter-spacing:-.01em;
+  text-wrap:balance; margin:0 0 18px;
+  animation:rise .7s cubic-bezier(.2,.7,.3,1) .06s both;
+}
+#doc h2.blk{
+  font-size:1.3em; line-height:1.3; font-weight:600; letter-spacing:-.005em;
+  margin:1.9em 0 .9em;
+}
+.doc-byline{
+  font-family:var(--ui); font-size:13.5px; color:var(--ink-2);
+  display:flex; flex-wrap:wrap; gap:6px 10px; align-items:baseline;
+  margin:0 0 6px;
+  animation:rise .7s cubic-bezier(.2,.7,.3,1) .12s both;
+}
+.doc-byline .author{ color:var(--ink); font-weight:600; }
+.doc-byline .sep{ color:var(--ink-3); }
+.doc-meta{
+  font-family:var(--ui); font-size:12.5px; color:var(--ink-3);
+  margin:0 0 26px;
+  animation:rise .7s cubic-bezier(.2,.7,.3,1) .16s both;
+}
+.doc-lede{
+  font-style:italic; font-size:1.06em; color:var(--ink-2);
+  border-top:1px solid var(--line); border-bottom:1px solid var(--line);
+  padding:16px 0; margin:0 0 34px;
+  animation:rise .7s cubic-bezier(.2,.7,.3,1) .2s both;
+}
+@keyframes rise{ from{ opacity:0; transform:translateY(10px);} to{ opacity:1; transform:none;} }
+
+.blk{ margin:0 0 1.35em; }
+/* e-reader style: justified body text, hyphenated so it doesn't leave rivers */
+#doc p.blk{ text-align:justify; hyphens:auto; -webkit-hyphens:auto; }
+#doc blockquote.blk{
+  border-left:2px solid var(--line); margin-left:0; padding-left:18px;
+  font-style:italic; color:var(--ink-2);
+}
+.colophon{
+  margin-top:64px; padding-top:20px; border-top:1px solid var(--line);
+  font-family:var(--ui); font-size:12px; color:var(--ink-3);
+  letter-spacing:.06em; text-align:center;
+}
+
+/* ---------- highlights ---------- */
+mark.hl{
+  --tag:var(--tag-none);
+  background:color-mix(in srgb, var(--tag) var(--hl-mix), transparent);
+  color:inherit; border-radius:2px; padding:.08em 0;
+  box-decoration-break:clone; -webkit-box-decoration-break:clone;
+  cursor:pointer; -webkit-tap-highlight-color:transparent;
+  transition:background .2s;
+}
+mark.hl[data-tag="amber"]{ --tag:var(--tag-amber); }
+mark.hl[data-tag="green"]{ --tag:var(--tag-green); }
+mark.hl[data-tag="blue"] { --tag:var(--tag-blue); }
+mark.hl[data-tag="pink"] { --tag:var(--tag-pink); }
+mark.hl[data-tag="none"] { --tag:var(--tag-none); }
+mark.hl.has-comment{
+  border-bottom:2px dotted color-mix(in srgb, var(--tag) 85%, var(--ink));
+}
+mark.hl:hover{ background:color-mix(in srgb, var(--tag) 46%, transparent); }
+mark.hl.flash{ animation:flash 1.1s ease-out 1; }
+@keyframes flash{
+  0%{ box-shadow:0 0 0 0 color-mix(in srgb, var(--tag,var(--ink)) 55%, transparent); }
+  60%{ box-shadow:0 0 0 9px transparent; }
+  100%{ box-shadow:0 0 0 0 transparent; }
+}
+
+/* ---------- note icon (one per note, in the margin) ---------- */
+.gdot{
+  --tag:var(--tag-amber);
+  position:absolute;
+  width:21px; height:21px;
+  border-radius:50% 50% 50% 4px;
+  background:var(--tag);
+  border:none; padding:0; cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  box-shadow:0 1px 4px rgba(0,0,0,.25);
+  animation:gdotin .3s cubic-bezier(.3,1.4,.4,1) both;
+  z-index:4;
+  -webkit-tap-highlight-color:transparent;
+  -webkit-user-select:none; user-select:none;
+  -webkit-touch-callout:none;
+}
+.gdot.movable{ touch-action:none; }
+.gdot::before{ content:""; position:absolute; inset:-9px; }   /* touch area */
+.gdot svg{ width:11px; height:11px; color:#fff; pointer-events:none; }
+.gdot[data-side="right"]{ border-radius:50% 50% 4px 50%; }
+.gdot[data-tag="amber"]{ --tag:var(--tag-amber); }
+.gdot[data-tag="green"]{ --tag:var(--tag-green); }
+.gdot[data-tag="blue"] { --tag:var(--tag-blue); }
+.gdot[data-tag="pink"] { --tag:var(--tag-pink); }
+.gdot[data-tag="none"] { --tag:var(--tag-none); }
+.gdot.active{ box-shadow:0 1px 4px rgba(0,0,0,.25), 0 0 0 3px color-mix(in srgb, var(--tag) 40%, transparent); }
+.gdot.dragging{ opacity:.85; cursor:grabbing; z-index:9; transition:none; animation:none; }
+.gdot.movable{ cursor:grab; }
+@keyframes gdotin{ from{ opacity:0; transform:scale(.3);} to{ opacity:1; transform:scale(1);} }
+
+/* ---------- highlight handles ---------- */
+.hand{
+  --tag:var(--tag-amber);
+  position:absolute; z-index:6;
+  width:17px; height:17px; border-radius:50%;
+  background:var(--tag);
+  border:2.5px solid var(--paper);
+  box-shadow:0 1px 4px rgba(0,0,0,.3);
+  cursor:grab; touch-action:none;
+  -webkit-user-select:none; user-select:none;
+  -webkit-touch-callout:none;
+  margin:-8.5px 0 0 -8.5px;   /* center over the point */
+}
+.hand::before{ content:""; position:absolute; inset:-11px; }  /* touch area */
+@media (pointer: coarse){
+  .hand{ width:22px; height:22px; margin:-11px 0 0 -11px; }
+  .hand::before{ inset:-14px; }
+}
+/* during a drag the hit-test must pass through the UI and reach the text */
+body.dragging .hand, body.dragging .gdot,
+body.dragging #minibar, body.dragging #cbox{ pointer-events:none; }
+.hand::after{
+  content:""; position:absolute; left:50%; width:2.5px; height:11px;
+  background:var(--tag); transform:translateX(-50%);
+}
+.hand.start::after{ top:100%; }
+.hand.end::after{ bottom:100%; }
+.hand:active{ cursor:grabbing; }
+
+/* page-cross arrows: extend the open highlight into the prev/next page.
+   They live OUTSIDE #doc (fixed, appended to body): the column has zero
+   inner padding, so any in-box placement either covers text or gets
+   clipped — the page's outer margin is the only free space */
+.pgx{
+  --tag:var(--tag-amber);
+  position:fixed; z-index:30;
+  width:22px; height:22px; border-radius:50%;
+  background:var(--paper); color:var(--tag);
+  border:2px solid var(--tag);
+  box-shadow:0 1px 4px rgba(0,0,0,.25);
+  display:flex; align-items:center; justify-content:center;
+  font:700 14px/1 var(--ui); padding:0 0 2px;
+  cursor:pointer; touch-action:manipulation;
+  -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;
+}
+.pgx::before{ content:""; position:absolute; inset:-10px; }
+@media (pointer: coarse){ .pgx{ width:26px; height:26px; font-size:16px; } }
+body.dragging .pgx{ pointer-events:none; }
+
+/* ---------- note minibar (next to the note, not covering it) ---------- */
+#minibar{
+  position:absolute; z-index:8;
+  display:none; align-items:center; gap:2px;
+  background:var(--chrome); color:var(--chrome-ink);
+  border-radius:26px; padding:5px;
+  box-shadow:var(--shadow);
+}
+#minibar.open{ display:flex; animation:pop .22s cubic-bezier(.3,1.3,.4,1) both; }
+@keyframes pop{ from{ opacity:0; transform:translateY(6px) scale(.95);} to{ opacity:1; transform:none;} }
+.mb-btn{
+  position:relative;
+  width:40px; height:40px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  color:var(--chrome-ink); flex:none;
+}
+.mb-btn:hover{ background:color-mix(in srgb, var(--chrome-ink) 14%, transparent); }
+.mb-btn.danger:hover{ color:#fff; background:var(--danger); }
+.mb-cur{
+  width:17px; height:17px; border-radius:50%;
+  background:var(--c); border:2.5px solid var(--chrome-ink);
+}
+.mb-tagdot{ width:16px; height:16px; border-radius:50%; background:var(--c); }
+.mb-tagdot.none{ background:transparent; border:2px dashed var(--chrome-ink); opacity:.8; }
+.mb-tagdot.sel{ box-shadow:0 0 0 2px var(--chrome), 0 0 0 4px var(--chrome-ink); }
+.mb-st{
+  position:absolute; top:6px; right:6px;
+  width:8px; height:8px; border-radius:50%;
+  background:var(--chrome-ink);
+}
+
+/* ---------- comment box (anchored to the note, in the document;
+     iOS auto-scrolls to keep the field visible above the keyboard) ---------- */
+#cbox{
+  position:absolute; z-index:8;
+  width:min(360px, calc(100% - 56px));
+  background:var(--surface); color:var(--ink);
+  border-left:4px solid var(--cb-tag, var(--tag-amber));
+  border-radius:14px; box-shadow:var(--shadow);
+  padding:10px;
+  display:none; gap:8px; align-items:flex-end;
+}
+#cbox.open{ display:flex; animation:pop .24s cubic-bezier(.3,1.3,.4,1) both; }
+#cb-text{
+  flex:1; min-height:42px; max-height:140px; resize:none;
+  font-family:var(--ui); font-size:15px; line-height:1.45;
+  color:var(--ink); background:var(--paper);
+  border:1.5px solid var(--line); border-radius:10px;
+  padding:10px 12px;
+}
+#cb-text:focus{ outline:none; border-color:var(--ink-2); }
+#cb-text::placeholder{ color:var(--ink-3); }
+.cb-btn{
+  width:42px; height:42px; border-radius:50%; flex:none;
+  display:flex; align-items:center; justify-content:center;
+  color:var(--ink); background:color-mix(in srgb, var(--ink) 7%, transparent);
+}
+.cb-btn:hover{ background:color-mix(in srgb, var(--ink) 13%, transparent); }
+.cb-btn.danger:hover{ color:#fff; background:var(--danger); }
+.cb-btn .mb-cur{ border-color:var(--ink); }
+.cb-row .mb-tagdot.none{ border-color:var(--ink); }
+.cb-row .mb-tagdot.sel{ box-shadow:0 0 0 2px var(--surface), 0 0 0 4px var(--ink); }
+#cb-mic.off, .mb-mic.off{ opacity:.45; }
+.cb-row{ display:flex; align-items:center; gap:8px; }
+.cb-spacer{ flex:1; }
+.cb-only-sheet{ display:none; }
+
+/* the editor is the SAME on every device: minibar + box anchored to the
+   note. The one exception is the on-screen keyboard (visualViewport
+   shrinks): the box then becomes a full-width strip that reads as an
+   extension of the keyboard, the playback bar hides, and the document
+   shifts so the annotated fragment stays visible above the strip. */
+@media (pointer:coarse){
+  #cb-text{ font-size:16px; }    /* <16px triggers auto-zoom on iOS */
+}
+body.kb-open .cb-only-sheet{ display:flex; }
+body.kb-open #minibar{ visibility:hidden; }
+body.kb-open #narbar{ visibility:hidden; }
+body.kb-open .pgx{ visibility:hidden; }
+body.kb-open #cbox{
+  position:fixed; z-index:92;
+  left:0 !important; right:0 !important; width:auto;
+  flex-direction:column; align-items:stretch; gap:6px;
+  border-left:none; border-radius:0;
+  padding:10px 14px 8px;
+  background:var(--surface);
+  border-top:1px solid var(--line);
+  box-shadow:0 -10px 24px color-mix(in srgb, var(--ink) 8%, transparent);
+  animation:none;
+}
+body.kb-open #cb-text{
+  background:transparent; border:none; padding:6px 6px 2px; max-height:132px;
+}
+body.kb-open #cb-text:focus{ border:none; }
+body.kb-open .cb-row{ justify-content:flex-end; }
+/* with the strip up: FABs out of the way, toast at the top */
+body.kb-open #fabs{ opacity:0; pointer-events:none; transition:opacity .2s; }
+body.kb-open #toast{
+  bottom:auto; top:calc(60px + env(safe-area-inset-top,0px));
+}
+#cb-mic.rec, .mb-mic.rec{
+  background:var(--ink) !important; color:var(--paper) !important;
+  animation:recpulse 1.5s ease-in-out infinite;
+}
+@keyframes recpulse{
+  0%,100%{ box-shadow:0 0 0 0 color-mix(in srgb, var(--ink) 35%, transparent); }
+  50%{ box-shadow:0 0 0 7px transparent; }
+}
+
+/* ---------- table of contents ---------- */
+#tocpanel{
+  position:fixed; z-index:88; top:52px; right:12px;
+  width:min(340px, calc(100vw - 24px)); max-height:min(60vh, 480px);
+  overflow-y:auto; display:none;
+  background:var(--surface); border-radius:14px;
+  box-shadow:var(--shadow), 0 0 0 1px color-mix(in srgb, var(--line) 70%, transparent);
+  padding:8px;
+}
+#tocpanel.open{ display:block; animation:pop .2s cubic-bezier(.3,1.2,.4,1) both; }
+.toc-item{
+  display:block; width:100%; text-align:left;
+  font-family:var(--ui); font-size:13.5px; line-height:1.4; color:var(--ink);
+  padding:9px 12px; border-radius:9px;
+}
+.toc-item:hover{ background:color-mix(in srgb, var(--ink) 7%, transparent); }
+.toc-item.lvl2{ font-weight:700; }
+.toc-item small{ color:var(--ink-3); font-weight:500; }
+
+/* ---------- page mode (epub-like) ---------- */
+body.paged{ height:100dvh; overflow:hidden; }
+body.paged #topbar{ transform:none !important; }
+body.paged main{ padding:0; }
+body.paged #doc{
+  margin:72px auto 0; padding:0;
+  overflow:hidden;
+  touch-action:manipulation;   /* pan-x fights handle dragging on iOS */
+}
+body.paged .gdot{ display:none; }
+body.paged #doc h1{ margin-top:.4em; }
+body.paged h2.blk{ break-after:avoid; }
+#pageinfo{
+  position:fixed; z-index:60; left:50%; transform:translateX(-50%);
+  bottom:calc(10px + env(safe-area-inset-bottom,0px));
+  display:flex; align-items:center; gap:4px;
+  font-family:var(--ui); font-size:12px; color:var(--ink-2);
+  font-variant-numeric:tabular-nums;
+}
+#pageinfo[hidden]{ display:none; }
+#pageinfo button{
+  height:38px; border-radius:10px; color:var(--ink);
+  font-size:20px; line-height:1; display:flex; align-items:center; justify-content:center;
+}
+#pg-prev{ padding:0 12px 0 34px; }
+#pg-next{ padding:0 34px 0 12px; }
+#pageinfo button:hover{ background:color-mix(in srgb, var(--ink) 8%, transparent); }
+body.nar-on #pageinfo{ bottom:calc(70px + env(safe-area-inset-bottom,0px)); }
+
+/* ---------- notes panel footer: export / import ---------- */
+.drawer-foot{
+  display:flex; gap:8px; flex:none;
+  padding:10px 12px calc(12px + env(safe-area-inset-bottom,0px));
+  border-top:1px solid var(--line);
+}
+.drawer-foot button{
+  flex:1; padding:10px 6px; border-radius:10px;
+  font-size:12.5px; font-weight:600; color:var(--ink);
+  background:color-mix(in srgb, var(--ink) 7%, transparent);
+}
+.drawer-foot button:hover{ background:color-mix(in srgb, var(--ink) 13%, transparent); }
+
+/* ---------- library (home) ---------- */
+body.home main, body.home #fabs, body.home #pageinfo,
+body.home #btn-toc, body.home #btn-paged, body.home #btn-notes,
+body.home #btn-size, body.home #btn-bm, body.home #btn-home,
+body.home #fab-hint{ display:none !important; }
+#home{ display:none; }
+body.home #home{ display:block; }
+#home{
+  max-width:980px; margin:0 auto;
+  padding:96px 22px calc(60px + env(safe-area-inset-bottom,0px));
+}
+.home-title{
+  font-family:var(--serif); font-weight:600; letter-spacing:-.01em;
+  font-size:clamp(1.7rem, 4.5vw, 2.2rem); margin:0 0 4px;
+}
+.home-sub{
+  font-family:var(--ui); font-size:13px; color:var(--ink-3); margin:0 0 10px;
+}
+.shelf-title{
+  font-family:var(--ui); font-size:11.5px; font-weight:700;
+  letter-spacing:.14em; text-transform:uppercase; color:var(--ink-2);
+  margin:36px 2px 12px;
+  display:flex; align-items:baseline; gap:8px;
+}
+.shelf-title small{ color:var(--ink-3); font-weight:500; letter-spacing:0; text-transform:none; }
+.shelf-grid{
+  display:grid; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr));
+  gap:14px;
+}
+.lect-card{
+  display:block; position:relative; overflow:hidden;
+  background:var(--surface); color:var(--ink); text-decoration:none;
+  border:1px solid var(--line); border-radius:16px;
+  padding:16px 18px 18px;
+  transition:transform .16s, box-shadow .16s;
+}
+.lect-card:hover{ transform:translateY(-2px); box-shadow:var(--shadow-soft); }
+.lect-author{
+  font-family:var(--ui); font-size:10.5px; font-weight:700;
+  letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3);
+  margin:0 0 5px; min-height:13px;
+}
+.lect-title{
+  font-family:var(--serif); font-size:18px; line-height:1.32; font-weight:600;
+  margin:0 0 12px;
+}
+.lect-meta{
+  font-family:var(--ui); font-size:12px; color:var(--ink-2);
+  display:flex; align-items:center; gap:5px; flex-wrap:wrap;
+}
+.lect-meta svg{ opacity:.75; }
+.lect-meta .dot{ color:var(--ink-3); }
+.lect-progress{
+  position:absolute; left:0; right:0; bottom:0; height:3px;
+  background:color-mix(in srgb, var(--ink) 8%, transparent);
+}
+.lect-progress i{ display:block; height:100%; background:var(--tag-amber); }
+.home-controls{
+  display:flex; align-items:center; gap:6px; flex-wrap:wrap;
+  margin:14px 0 2px; font-family:var(--ui);
+}
+.home-controls .lbl{ font-size:11px; color:var(--ink-3); margin-right:2px; }
+.gchip{
+  font-family:var(--ui); font-size:12px; padding:5px 12px;
+  border:1px solid var(--line); border-radius:999px;
+  background:var(--surface); color:var(--ink-2); cursor:pointer;
+}
+.gchip.on{ background:var(--ink); color:var(--paper); border-color:var(--ink); }
+.lect-card.is-reg{ border-style:dashed; }
+.lect-card.is-reg .lect-title{ color:var(--ink-2); }
+.st-chip{
+  font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+  padding:2px 8px; border-radius:999px;
+  background:color-mix(in srgb, var(--tag-amber) 18%, transparent);
+  color:color-mix(in srgb, var(--tag-amber) 80%, var(--ink));
+}
+.st-chip.src{
+  background:color-mix(in srgb, var(--ink) 8%, transparent);
+  color:var(--ink-2);
+}
+/* ---------- lecture info sheet (registered ones) ---------- */
+#ficha{
+  position:fixed; inset:0; z-index:120; display:flex;
+  align-items:flex-end; justify-content:center;
+  background:rgba(0,0,0,.32); padding:0;
+}
+#ficha[hidden]{ display:none; }
+.ficha-card{
+  width:100%; max-width:520px; max-height:78vh; overflow:auto;
+  background:var(--surface); border-radius:22px 22px 0 0;
+  padding:22px 22px calc(24px + env(safe-area-inset-bottom,0px));
+  box-shadow:var(--shadow-soft);
+}
+@media (min-width:600px){
+  #ficha{ align-items:center; padding:24px; }
+  .ficha-card{ border-radius:22px; }
+}
+.ficha-card h3{
+  font-family:var(--serif); font-size:20px; line-height:1.3; margin:0 0 10px;
+}
+.ficha-tags{ display:flex; gap:6px; flex-wrap:wrap; margin:0 0 14px; }
+.ficha-tags span{
+  font-family:var(--ui); font-size:11px; color:var(--ink-2);
+  border:1px solid var(--line); border-radius:999px; padding:3px 10px;
+}
+.ficha-revs{ margin:0; padding:0; list-style:none; }
+.ficha-revs li{
+  font-family:var(--ui); font-size:13px; line-height:1.5; color:var(--ink);
+  padding:9px 0; border-top:1px solid var(--line);
+}
+.ficha-revs small{ display:block; color:var(--ink-3); font-size:11px; margin-bottom:2px; }
+.ficha-empty{ font-family:var(--ui); font-size:13px; color:var(--ink-3); }
+.ficha-close{
+  margin-top:16px; width:100%; font-family:var(--ui); font-size:14px; font-weight:600;
+  padding:11px; border:1px solid var(--line); border-radius:999px;
+  background:var(--paper); color:var(--ink); cursor:pointer;
+}
+
+/* ---------- debug panel (3 taps on the logo) ---------- */
+#dbg{
+  position:fixed; left:8px; bottom:8px; z-index:999;
+  max-width:92vw; max-height:40vh; overflow:hidden;
+  background:rgba(0,0,0,.82); color:#7CFC9A;
+  font:10px/1.5 ui-monospace,Menlo,monospace;
+  padding:8px 10px; border-radius:8px;
+  pointer-events:none; white-space:nowrap;
+}
+
+/* ---------- FABs (note · save · narration) ---------- */
+#fabs{
+  position:fixed; z-index:70;
+  right:18px; bottom:calc(18px + env(safe-area-inset-bottom,0px));
+  display:flex; flex-direction:column; align-items:center; gap:10px;
+  transition:bottom .32s cubic-bezier(.3,.9,.3,1);
+}
+/* the playback bar pushes the group upward */
+body.nar-on #fabs{ bottom:calc(86px + env(safe-area-inset-bottom,0px)); }
+@media (max-width:560px){ #fabs{ flex-direction:row; } }
+#nfab{
+  position:relative;
+  width:52px; height:52px; border-radius:50%; flex:none;
+  background:var(--chrome); color:var(--chrome-ink);
+  display:flex; align-items:center; justify-content:center;
+  box-shadow:var(--shadow);
+  animation:fabin .5s cubic-bezier(.3,1.4,.4,1) .45s both;
+  transition:background .25s, color .25s, box-shadow .25s;
+}
+@keyframes fabin{ from{ opacity:0; transform:scale(.4);} to{ opacity:1; transform:scale(1);} }
+#fab .ic{ position:absolute; transition:opacity .2s, transform .3s cubic-bezier(.3,1.2,.4,1); }
+#fab .ic-pen{ opacity:1; transform:none; }
+#fab .ic-x{ opacity:0; transform:rotate(-45deg) scale(.4); }
+/* per-button tooltip (only for pointers that support hover) */
+@media (hover:hover){
+  #fabs button::after{
+    content:attr(data-tip);
+    position:absolute; right:calc(100% + 12px); top:50%; transform:translateY(-50%);
+    background:var(--chrome); color:var(--chrome-ink);
+    font-family:var(--ui); font-size:12px; font-weight:500; white-space:nowrap;
+    padding:6px 11px; border-radius:9px; box-shadow:var(--shadow-soft);
+    opacity:0; pointer-events:none; transition:opacity .15s;
+  }
+  #fabs button:hover::after{ opacity:1; }
+  @media (max-width:560px){
+    #fabs button::after{ right:auto; left:50%; top:auto; bottom:calc(100% + 10px); transform:translateX(-50%); }
+  }
+}
+/* bookmarks in the TOC */
+.toc-head{
+  font-family:var(--ui); font-size:11px; font-weight:700;
+  letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3);
+  padding:12px 12px 4px;
+}
+.toc-bm{ display:flex; align-items:center; gap:2px; }
+.toc-bm .toc-item{ flex:1; min-width:0; }
+.toc-bm .toc-item small{ display:block; }
+.bm-del{
+  width:30px; height:30px; border-radius:8px; flex:none;
+  display:flex; align-items:center; justify-content:center; color:var(--ink-3);
+}
+.bm-del:hover{ color:#fff; background:var(--danger); }
+#fab.on{
+  background:var(--paper); color:var(--ink);
+  box-shadow:var(--shadow), 0 0 0 2.5px var(--ink),
+             0 0 0 6px color-mix(in srgb, var(--mode-tag-c,var(--tag-amber)) 35%, transparent);
+}
+/* active = inverted white (like narration and save), no swap to a cross */
+
+/* first-use hint */
+#fab-hint{
+  position:fixed; z-index:69;
+  right:86px; bottom:calc(34px + env(safe-area-inset-bottom,0px));
+  background:var(--chrome); color:var(--chrome-ink);
+  font-size:12.5px; padding:8px 12px; border-radius:10px;
+  box-shadow:var(--shadow-soft); white-space:nowrap;
+  animation:fabin .5s cubic-bezier(.3,1.2,.4,1) 1.1s both;
+  pointer-events:none;
+}
+#fab-hint.gone{ opacity:0; transition:opacity .3s; }
+@media (max-width:560px){
+  #fab-hint{ right:18px; bottom:calc(84px + env(safe-area-inset-bottom,0px)); }
+}
+
+/* ---------- narration mode ---------- */
+#nfab.on{
+  background:var(--paper); color:var(--ink);
+  box-shadow:var(--shadow), 0 0 0 2.5px var(--ink),
+             0 0 0 6px color-mix(in srgb, var(--tag-blue) 32%, transparent);
+}
+#btn-bm.on svg{ fill:currentColor; }
+
+#narbar{
+  position:fixed; z-index:74; left:0; right:0; bottom:0;
+  display:flex; align-items:center; gap:12px;
+  padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));
+  background:color-mix(in srgb, var(--paper) 88%, transparent);
+  -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px);
+  border-top:1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  transform:translateY(112%);
+  /* visibility on top of the translate: a layer "hidden" only by transform
+     can paint offset on iOS (compositing bugs with backdrop-filter) */
+  visibility:hidden;
+  transition:transform .36s cubic-bezier(.3,.9,.3,1), visibility 0s .36s;
+  font-family:var(--ui);
+}
+#narbar.on{ transform:none; visibility:visible; transition:transform .36s cubic-bezier(.3,.9,.3,1); }
+#nb-play{
+  width:44px; height:44px; border-radius:50%; flex:none;
+  background:var(--ink); color:var(--paper);
+  display:flex; align-items:center; justify-content:center;
+}
+#nb-play .ic-pause{ display:none; }
+.nb-skip{
+  width:38px; height:38px; border-radius:50%; flex:none;
+  display:flex; align-items:center; justify-content:center; color:var(--ink);
+  background:color-mix(in srgb, var(--ink) 7%, transparent);
+}
+.nb-skip:hover{ background:color-mix(in srgb, var(--ink) 14%, transparent); }
+#narbar.playing #nb-play .ic-play{ display:none; }
+#narbar.playing #nb-play .ic-pause{ display:block; }
+.nb-time{
+  font-size:11.5px; color:var(--ink-2); font-variant-numeric:tabular-nums;
+  flex:none; min-width:38px; text-align:center;
+}
+#nb-track{ flex:1; height:28px; display:flex; align-items:center; cursor:pointer; touch-action:none; }
+#nb-track .rail{
+  width:100%; height:4px; border-radius:2px;
+  background:color-mix(in srgb, var(--ink) 14%, transparent);
+  overflow:hidden;
+}
+#nb-fill{ height:100%; width:0; background:var(--ink); border-radius:2px; }
+#nb-rate{
+  flex:none; font-size:12px; font-weight:600; color:var(--ink);
+  padding:6px 10px; border-radius:8px;
+  background:color-mix(in srgb, var(--ink) 8%, transparent);
+  font-variant-numeric:tabular-nums;
+}
+#doc.nar{ cursor:pointer; }
+::highlight(nar-active){ background:color-mix(in srgb, var(--tag-blue) 32%, transparent); }
+::highlight(nar-hover){ background:color-mix(in srgb, var(--tag-blue) 14%, transparent); }
+@media (max-width:560px){ #narbar{ gap:8px; } .nb-time{ min-width:34px; } }
+
+/* ---------- notes panel ---------- */
+#scrim{
+  position:fixed; inset:0; z-index:80;
+  background:color-mix(in srgb, var(--ink) 32%, transparent);
+  opacity:0; pointer-events:none; transition:opacity .28s;
+}
+#scrim.on{ opacity:1; pointer-events:auto; }
+#drawer{
+  position:fixed; z-index:85; background:var(--surface);
+  box-shadow:var(--shadow);
+  display:flex; flex-direction:column;
+  left:0; right:0; bottom:0; height:min(72vh, 620px);
+  border-radius:18px 18px 0 0;
+  transform:translateY(112%);
+  transition:transform .36s cubic-bezier(.3,.9,.3,1);
+}
+#drawer.open{ transform:none; }
+@media (min-width:900px){
+  #drawer{
+    left:auto; top:0; bottom:0; right:0; width:360px; height:auto;
+    border-radius:0; border-left:1px solid var(--line);
+    transform:translateX(105%);
+  }
+  #drawer.open{ transform:none; }
+}
+.drawer-head{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:18px 20px 12px;
+}
+.drawer-title{ font-size:16px; font-weight:700; letter-spacing:-.01em; }
+.drawer-title small{ color:var(--ink-3); font-weight:500; margin-left:6px; }
+.drawer-close{
+  width:32px; height:32px; border-radius:8px;
+  display:flex; align-items:center; justify-content:center; color:var(--ink-2);
+}
+.drawer-close:hover{ background:color-mix(in srgb, var(--ink) 7%, transparent); }
+.drawer-filters{
+  display:flex; gap:6px; padding:0 20px 14px;
+  border-bottom:1px solid var(--line);
+  overflow-x:auto; scrollbar-width:none;
+}
+.drawer-filters::-webkit-scrollbar{ display:none; }
+.fchip{
+  --c:var(--ink-2);
+  display:flex; align-items:center; gap:6px; flex:none;
+  font-size:12px; font-weight:600; color:var(--ink-2);
+  padding:6px 11px; border-radius:16px; border:1.5px solid var(--line);
+}
+.fchip .dot{ width:9px; height:9px; border-radius:50%; background:var(--c); }
+.fchip.none .dot{ background:transparent; border:1.5px dashed var(--ink-3); }
+.fchip[aria-pressed="true"]{ border-color:var(--ink); color:var(--ink); }
+.drawer-list{ flex:1; overflow-y:auto; padding:10px 12px 24px; }
+.note-item{
+  --tag:var(--tag-none);
+  position:relative; width:100%; text-align:left;
+  padding:12px 14px 12px 20px; border-radius:12px;
+  display:block; margin-bottom:2px;
+}
+.note-item::before{
+  content:""; position:absolute; left:8px; top:14px; bottom:14px;
+  width:3.5px; border-radius:2px; background:var(--tag);
+}
+.note-item:hover{ background:color-mix(in srgb, var(--ink) 5%, transparent); }
+.note-quote{
+  font-family:var(--serif); font-style:italic; font-size:14px;
+  line-height:1.5; color:var(--ink); margin:0;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+}
+.note-comment{
+  font-size:13px; color:var(--ink-2); line-height:1.45; margin:5px 0 0;
+  display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;
+}
+.note-foot{
+  display:flex; align-items:center; justify-content:space-between;
+  margin-top:7px;
+}
+.note-tagname{ font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:color-mix(in srgb, var(--tag) 75%, var(--ink)); }
+.note-del{
+  width:30px; height:30px; border-radius:8px; margin:-6px -6px -6px 0;
+  display:flex; align-items:center; justify-content:center; color:var(--ink-3);
+}
+.note-del:hover{ color:var(--danger); background:color-mix(in srgb, var(--danger) 10%, transparent); }
+.drawer-empty{
+  padding:56px 32px; text-align:center; color:var(--ink-3);
+  font-size:13.5px; line-height:1.6;
+}
+.drawer-empty .big{
+  font-family:var(--serif); font-style:italic; font-size:17px;
+  color:var(--ink-2); display:block; margin-bottom:8px;
+}
+
+/* ---------- toast ---------- */
+#toast{
+  position:fixed; z-index:90; left:50%; transform:translate(-50%, 20px);
+  bottom:calc(24px + env(safe-area-inset-bottom,0px));
+  background:var(--chrome); color:var(--chrome-ink);
+  font-size:13.5px; font-weight:500;
+  padding:11px 16px; border-radius:12px;
+  box-shadow:var(--shadow-soft);
+  display:flex; align-items:center; gap:14px;
+  opacity:0; pointer-events:none;
+  transition:opacity .25s, transform .3s cubic-bezier(.3,1.1,.4,1);
+  max-width:calc(100vw - 32px);
+}
+#toast.on{ opacity:1; transform:translate(-50%,0); pointer-events:auto; }
+#toast .t-act{
+  font-weight:700; font-size:13px; letter-spacing:.02em;
+  color:var(--chrome-ink); text-decoration:underline; text-underline-offset:3px;
+  flex:none;
+}
+
+@media (prefers-reduced-motion: reduce){
+  *, *::before, *::after{
+    transition-duration:.01ms !important;
+    animation-duration:.01ms !important;
+    animation-delay:0ms !important;
+    scroll-behavior:auto !important;
+  }
+}
+</style>
+
+<div id="progress"></div>
+
+<header id="topbar">
+  <div class="brand">
+    <div class="brand-badge">a</div>
+    <div class="brand-name">escolib · <b>Lector</b></div>
+  </div>
+  <div class="topbar-actions">
+    <button id="btn-home" class="hdr-btn" title="Biblioteca" aria-label="Volver a la biblioteca">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 6 4 14"/><path d="M12 6v14"/><path d="M8 8v12"/><path d="M4 4v16"/></svg>
+    </button>
+    <button id="btn-toc" class="hdr-btn" title="Índice" aria-label="Índice del documento">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h.01M3 12h.01M3 18h.01M8 6h13M8 12h13M8 18h13"/></svg>
+    </button>
+    <button id="btn-paged" class="hdr-btn" title="Modo página" aria-label="Alternar modo página" aria-pressed="false">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg>
+    </button>
+    <button id="btn-notes" class="hdr-btn" title="Mis notas" aria-label="Ver mis notas">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11l5-5V5a2 2 0 0 0-2-2Z"/><path d="M15 21v-4a2 2 0 0 1 2-2h4"/></svg>
+      <span class="hdr-badge" id="notes-badge" hidden>0</span>
+    </button>
+    <button id="btn-size" class="hdr-btn" title="Tamaño de letra" aria-label="Cambiar tamaño de letra">Aa</button>
+    <button id="btn-bm" class="hdr-btn" title="Marcador" aria-label="Marcar esta página">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+    </button>
+  </div>
+</header>
+
+<div id="modechip" role="status">
+  <span class="pulse"></span>
+  <span id="modechip-txt"></span>
+</div>
+
+<section id="home" hidden></section>
+
+<main>
+  <article id="doc" lang="es"></article>
+</main>
+
+<div id="fab-hint" role="status">Doble toque sobre una palabra para resaltar y anotar</div>
+
+<!-- FAB: note-mode switch -->
+<div id="fabs">
+  <button id="nfab" hidden aria-pressed="false" aria-label="Modo narración" data-tip="Modo narración">
+    <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
+  </button>
+</div>
+
+<div id="narbar" aria-label="Reproducción de la narración">
+  <button id="nb-play" aria-label="Reproducir / pausar">
+    <svg class="ic-play" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+    <svg class="ic-pause" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
+  </button>
+  <button id="nb-prev" class="nb-skip" aria-label="Fragmento anterior" title="Fragmento anterior">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6z"/><path d="M20 5v14l-10-7z"/></svg>
+  </button>
+  <button id="nb-next" class="nb-skip" aria-label="Fragmento siguiente" title="Fragmento siguiente">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2z"/><path d="M4 5v14l10-7z"/></svg>
+  </button>
+  <span class="nb-time" id="nb-cur">0:00</span>
+  <div id="nb-track" aria-label="Posición"><div class="rail"><div id="nb-fill"></div></div></div>
+  <span class="nb-time" id="nb-total">–:––</span>
+  <button id="nb-rate" aria-label="Velocidad de reproducción">1×</button>
+</div>
+
+<div id="scrim"></div>
+
+<!-- notes panel -->
+<aside id="drawer" role="dialog" aria-label="Notas guardadas">
+  <div class="drawer-head">
+    <span class="drawer-title">Notas<small id="drawer-count"></small></span>
+    <button class="drawer-close" id="drawer-close" aria-label="Cerrar panel">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="drawer-filters" id="drawer-filters"></div>
+  <div class="drawer-list" id="drawer-list"></div>
+  <div class="drawer-foot">
+    <button id="exp-ai" title="Copiar notas con contexto para pegar en una IA">Copiar para IA</button>
+    <button id="exp-json" title="Descargar notas y avance como archivo">Exportar</button>
+    <button id="imp-json" title="Importar un archivo exportado en otro dispositivo">Importar</button>
+    <input id="imp-file" type="file" accept="application/json,.json" hidden>
+  </div>
+</aside>
+
+<div id="tocpanel" role="menu" aria-label="Índice"></div>
+
+<div id="pageinfo" hidden>
+  <button id="pg-prev" aria-label="Página anterior">‹</button>
+  <span id="pg-num">1 / 1</span>
+  <button id="pg-next" aria-label="Página siguiente">›</button>
+</div>
+
+<div id="toast" role="status"></div>
+
+<script type="text/markdown" id="src">
+# A la deriva
+
+> Horacio Quiroga · Cuentos de amor, de locura y de muerte · 1917. Cuento. Publicado por primera vez en la revista Fray Mocho (1912). Texto de dominio público, tomado de Wikisource.
+
+El hombre pisó algo blanduzco, y enseguida sintió la mordedura en el pie. Saltó adelante, y al volverse con un juramento vio una yararacusú que arrollada sobre sí misma, esperaba otro ataque.
+
+El hombre echó una veloz ojeada a su pie, donde dos gotitas de sangre engrosaban dificultosamente, y sacó el machete de la cintura. La víbora vio la amenaza, y hundió más la cabeza en el centro mismo de su espiral; pero el machete cayó de plano, dislocándole las vértebras.
+
+El hombre se bajó hasta la mordedura, quitó las gotitas de sangre, y durante un instante contempló. Un dolor agudo nacía de los dos puntitos violetas, y comenzaba a invadir todo el pie. Apresuradamente se ligó el tobillo con su pañuelo y siguió por la picada hacia su rancho.
+
+El dolor en el pie aumentaba, con sensación de tirante abultamiento, y de pronto el hombre sintió dos o tres fulgurantes puntadas que,  como relámpagos habían irradiado desde la herida hasta la mitad de la pantorrilla. Movía la pierna con dificultad; una metálica sequedad de garganta, seguida de sed quemante, le arrancó un nuevo juramento.
+
+Llegó por fin al rancho, y se echó de brazos sobre la rueda de un trapiche. Los dos puntitos violeta desaparecían ahora en la monstruosa hinchazón del pie entero. La piel parecía adelgazada y a punto de ceder, de tensa. Quiso llamar a su mujer, y la voz se quebró en un ronco arrastre de garganta reseca. La sed lo devoraba.
+
+—¡Dorotea! —alcanzó a lanzar en un estertor—. ¡Dame caña!
+</script>
+
+<script>
+(() => {
+'use strict';
+
+/* ╔══════════════════════════════════════════════════════════╗
+   ║ 1 · Config and state                                       ║
+   ╚══════════════════════════════════════════════════════════╝ */
+/* document: ?doc=<slug> loads lectures/<slug>/text.md;
+   ?doc=<slug>&file=<name> loads lectures/<slug>/<name>.md
+   (to compare variants in two windows); with no parameter, the
+   embedded sample text */
+const _q = new URLSearchParams(location.search);
+const DOC_PARAM = (_q.get('doc') || '').replace(/[^a-zA-Z0-9_-]/g, '');
+const FILE_PARAM = (_q.get('file') || '').replace(/[^a-zA-Z0-9_-]/g, '');
+let SLUG = 'muestra';
+let PROJECT = 'Texto de muestra';
+let K_NOTES = `audiolib.reader.v1.notes.${SLUG}`;
+const K_PREFS = 'audiolib.reader.v1.prefs';
+const K_HINT  = 'audiolib.reader.v1.hint';
+const TAGS = {
+  amber: { label:'Clave',    css:'var(--tag-amber)' },
+  green: { label:'Concepto', css:'var(--tag-green)' },
+  blue:  { label:'Pregunta', css:'var(--tag-blue)'  },
+  pink:  { label:'Cita',     css:'var(--tag-pink)'  },
+};
+const TAG_KEYS = Object.keys(TAGS);
+const tagCss   = (t) => t ? TAGS[t].css : 'var(--tag-none)';
+const tagLabel = (t) => t ? TAGS[t].label : 'Sin tag';
+const tagAttr  = (t) => t || 'none';
+const BUBBLE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>';
+const MARKER_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m9 11-6 6v3h9l3-3"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4l8 8Z"/></svg>';
+const TRASH_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>';
+const MIC_SVG = '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>';
+
+const load = (k, fb) => { try { const v = JSON.parse(localStorage.getItem(k)); return v ?? fb; } catch { return fb; } };
+const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+
+/* note = { id, tag, comment, created,
+            start/end/exact (with fragment)  or anchorOffset (in margin),
+            side: 'left'|'right' }                                        */
+const hasFrag = (n) => n.exact != null;
+const isValid = (n) => hasFrag(n) || (n.comment && n.comment.trim().length > 0);
+
+let notes = [];
+function loadNotes() {
+  K_NOTES = `audiolib.reader.v1.notes.${SLUG}`;
+  notes = load(K_NOTES, []).map(n => ({ comment:'', tag:null, side:'left', ...n }));
+}
+
+let prefs = load(K_PREFS, { size:1, tag:'amber' });
+if (!prefs.tag || !TAGS[prefs.tag]) prefs.tag = 'amber';   // default: amber
+
+let openId = null;           // note whose editor is open
+let openScrollY = 0;         // to discard provisional notes on scroll
+let drawerFilter = 'all';
+let lastTap = { t:0, x:0, y:0 };
+let pendingTap = null;
+let touchSelTimer = null;
+let persistTimer = null;
+
+const $ = (s) => document.querySelector(s);
+const doc = $('#doc');
+const uid = () => 'n' + Math.random().toString(36).slice(2, 9) + performance.now().toString(36).replace('.','');
+const note = (id) => notes.find(x => x.id === id);
+const openNote = () => openId ? note(openId) : null;
+
+/* ╔══════════════════════════════════════════════════════════╗
+   ║ 2 · Document rendering                                     ║
+   ╚══════════════════════════════════════════════════════════╝ */
+function renderDoc(raw) {
+  const blocksMd = raw.split(/\n\s*\n/);
+  const frag = document.createDocumentFragment();
+  let firstBQ = true;
+
+  for (const b of blocksMd) {
+    const t = b.trim();
+    if (t.startsWith('# ')) {
+      const eyebrow = document.createElement('p');
+      eyebrow.className = 'doc-eyebrow';
+      eyebrow.textContent = PROJECT;
+      frag.appendChild(eyebrow);
+      const h1 = document.createElement('h1');
+      h1.textContent = t.slice(2);
+      frag.appendChild(h1);
+    } else if (t.startsWith('## ')) {
+      const h2 = document.createElement('h2');
+      h2.className = 'blk';
+      h2.textContent = t.slice(3);
+      frag.appendChild(h2);
+    } else if (t.startsWith('> ') && firstBQ) {
+      firstBQ = false;
+      const inner = t.replace(/^>\s?/gm, '');
+      const parts = inner.split(' · ');
+      let author = '', medium = '', date = '', lede = inner;
+      if (parts.length >= 3) {
+        author = parts[0]; medium = parts[1];
+        const m = parts.slice(2).join(' · ').match(/^(.+?\d{4})\.\s*(.*)$/s);
+        if (m) { date = m[1]; lede = m[2]; } else { date = parts[2]; lede = ''; }
+      }
+      const by = document.createElement('p');
+      by.className = 'doc-byline';
+      by.innerHTML = `<span class="author"></span><span class="sep">·</span><span class="medium"></span><span class="sep">·</span><span class="date"></span>`;
+      by.querySelector('.author').textContent = author;
+      by.querySelector('.medium').textContent = medium;
+      by.querySelector('.date').textContent = date;
+      frag.appendChild(by);
+      const meta = document.createElement('p');
+      meta.className = 'doc-meta';
+      meta.id = 'doc-meta';
+      frag.appendChild(meta);
+      if (lede) {
+        const p = document.createElement('p');
+        p.className = 'doc-lede blk';
+        p.textContent = lede;
+        frag.appendChild(p);
+      }
+    } else if (t.startsWith('## ')) {
+      const h2 = document.createElement('h2');
+      h2.className = 'blk';
+      h2.textContent = t.slice(3);
+      frag.appendChild(h2);
+    } else if (t.startsWith('> ')) {
+      const bq = document.createElement('blockquote');
+      bq.className = 'blk';
+      bq.textContent = t.replace(/^>\s?/gm, '');
+      frag.appendChild(bq);
+    } else {
+      const p = document.createElement('p');
+      p.className = 'blk';
+      p.textContent = t;
+      frag.appendChild(p);
+    }
+  }
+  const colophon = document.createElement('footer');
+  colophon.className = 'colophon';
+  colophon.textContent = `fin · ${SLUG} · escolib`;
+  frag.appendChild(colophon);
+  doc.appendChild(frag);
+
+  const words = doc.textContent.split(/\s+/).filter(Boolean).length;
+  // #doc-meta only exists when the document has a byline block — a
+  // hand-written .md without one must still get a fully working reader
+  const dm = $('#doc-meta');
+  if (dm) dm.textContent = `≈ ${Math.max(1, Math.round(words / 210))} min de lectura · ${words.toLocaleString('es-AR')} palabras`;
+}
+
+/* ╔══════════════════════════════════════════════════════════╗
+   ║ 3 · Text utilities: offsets, caret, words                  ║
+   ╚══════════════════════════════════════════════════════════╝ */
+function walkTexts() {
+  const w = document.createTreeWalker(doc, NodeFilter.SHOW_TEXT);
+  const arr = []; let off = 0, n;
+  while ((n = w.nextNode())) { arr.push({ node:n, start:off, end:off + n.data.length }); off += n.data.length; }
+  return arr;
+}
+function absOffset(container, offset) {
+  const r = document.createRange();
+  r.setStart(doc, 0);
+  r.setEnd(container, offset);
+  return r.toString().length;
+}
+function rangeFromOffsets(start, end) {
+  const texts = walkTexts();
+  const r = document.createRange();
+  let s = false, e = false;
+  for (const t of texts) {
+    if (!s && start >= t.start && start <= t.end) { r.setStart(t.node, start - t.start); s = true; }
+    if (end >= t.start && end <= t.end) { r.setEnd(t.node, end - t.start); e = true; }
+  }
+  if (!s || !e) return null;
+  return r;
+}
+/* caret offset under a screen point; if the point falls in the
+   margin, retries shifting x toward the text column */
+function caretOffsetFromPoint(x, y) {
+  const rect = doc.getBoundingClientRect();
+  const tries = [
+    [x, y], [x, y - 10], [x, y + 10],
+    [rect.left + 60, y], [rect.left + rect.width / 2, y], [rect.right - 60, y],
+  ];
+  for (const [tx, ty] of tries) {
+    let node = null, off = 0;
+    if (document.caretRangeFromPoint) {
+      const r = document.caretRangeFromPoint(tx, ty);
+      if (r) { node = r.startContainer; off = r.startOffset; }
+    } else if (document.caretPositionFromPoint) {
+      const p = document.caretPositionFromPoint(tx, ty);
+      if (p) { node = p.offsetNode; off = p.offset; }
+    }
+    if (node && doc.contains(node) && node.nodeType === Node.TEXT_NODE) {
+      return absOffset(node, off);
+    }
+  }
+  // geometric fallback: if the native API refuses (WebKit on iPad
+  // returns null over overlays or non-selectable text), find the
+  // character whose actual rectangle contains the point — pure geometry
+  const g = geoOffsetFromPoint(x, y);
+  if (g != null) dlog('geo off=' + g);
+  return g;
+}
+function geoOffsetFromPoint(x, y) {
+  const texts = walkTexts();
+  if (!texts.length) return null;
+  const total = texts[texts.length - 1].end;
+  // in page mode the text flows in columns: reading order advances
+  // first by column and only then by y — the search must respect that
+  const inPaged = document.body.classList.contains('paged');
+  const dr = doc.getBoundingClientRect();
+  const colOf = (cx) => inPaged ? Math.floor((cx - dr.left + doc.scrollLeft) / paged.stride) : 0;
+  const pc = colOf(x);
+  const rectAt = (off) => {
+    const o = Math.max(0, Math.min(off, total - 1));
+    for (const t of texts) {
+      if (o >= t.start && o < t.end) {
+        const r = document.createRange();
+        r.setStart(t.node, o - t.start);
+        r.setEnd(t.node, o - t.start + 1);
+        for (const rc of r.getClientRects()) if (rc.width || rc.height) return rc;
+        return null;
+      }
+    }
+    return null;
+  };
+  let lo = 0, hi = total - 1;
+  for (let i = 0; i < 26 && lo < hi; i++) {
+    const mid = (lo + hi) >> 1;
+    const rc = rectAt(mid);
+    if (!rc) { lo = mid + 1; continue; }        // gap between paragraphs
+    const rcCol = colOf(rc.left);
+    if (pc < rcCol) hi = mid - 1;               // earlier column
+    else if (pc > rcCol) lo = mid + 1;          // later column
+    else if (y < rc.top - 2) hi = mid - 1;
+    else if (y > rc.bottom + 2) lo = mid + 1;
+    else if (x < rc.left) hi = mid - 1;         // same line
+    else if (x > rc.right) lo = mid + 1;
+    else return mid;
+  }
+  return Math.max(0, Math.min(lo, total));
+}
+const WORDish = /[\p{L}\p{N}\p{M}''-]/u;
+function wordBoundsAt(off) {
+  const txt = doc.textContent;
+  let s = Math.max(0, Math.min(off, txt.length - 1));
+  if (!WORDish.test(txt[s] || '')) {              // look for a nearby word
+    let r = s; while (r < txt.length && !WORDish.test(txt[r])) r++;
+    let l = s; while (l > 0 && !WORDish.test(txt[l])) l--;
+    s = (r - s <= s - l && r < txt.length) ? r : l;
+    if (!WORDish.test(txt[s] || '')) return null;
+  }
+  let a = s, b = s;
+  while (a > 0 && WORDish.test(txt[a - 1])) a--;
+  while (b < txt.length && WORDish.test(txt[b])) b++;
+  return [a, b];
+}
+function snapStart(off) {   // start handle: snaps to word start
+  const txt = doc.textContent;
+  let o = Math.max(0, off);
+  if (WORDish.test(txt[o] || '')) { while (o > 0 && WORDish.test(txt[o - 1])) o--; return o; }
+  while (o < txt.length && !WORDish.test(txt[o])) o++;
+  return o;
+}
+function snapEnd(off) {     // end handle: snaps to word end
+  const txt = doc.textContent;
+  let o = Math.min(txt.length, off);
+  if (WORDish.test(txt[o - 1] || '')) { while (o < txt.length && WORDish.test(txt[o])) o++; return o; }
+  while (o > 0 && !WORDish.test(txt[o - 1])) o--;
+  return o;
+}
+function prevWordStart(off) {   // start of the word BEFORE this offset
+  const txt = doc.textContent;
+  let o = off - 1;
+  while (o > 0 && !WORDish.test(txt[o])) o--;
+  if (o < 0 || !WORDish.test(txt[o])) return null;
+  while (o > 0 && WORDish.test(txt[o - 1])) o--;
+  return o;
+}
+function nextWordEnd(off) {     // end of the word AT/AFTER this offset
+  const txt = doc.textContent;
+  let o = off;
+  while (o < txt.length && !WORDish.test(txt[o])) o++;
+  if (o >= txt.length) return null;
+  while (o < txt.length && WORDish.test(txt[o])) o++;
+  return o;
+}
+
+/* ╔══════════════════════════════════════════════════════════╗
+   ║ 4 · Painting: highlights, icons, handles, editor           ║
+   ╚══════════════════════════════════════════════════════════╝ */
+function unwrapMarks() {
+  doc.querySelectorAll('mark.hl').forEach(m => m.replaceWith(...m.childNodes));
+  doc.normalize();
+}
+function paintMarks() {
+  unwrapMarks();
+  const docText = doc.textContent;
+  const ranged = notes.filter(hasFrag);
+  for (const n of ranged) {
+    if (docText.slice(n.start, n.end) !== n.exact) {
+      const i = docText.indexOf(n.exact);
+      if (i >= 0) { n.start = i; n.end = i + n.exact.length; n.orphan = false; }
+      else n.orphan = true;
+    } else n.orphan = false;
+  }
+  for (const n of ranged.filter(n => !n.orphan).sort((a,b) => a.start - b.start)) {
+    const texts = walkTexts();
+    const segs = [];
+    for (const t of texts) {
+      const s = Math.max(n.start, t.start), e = Math.min(n.end, t.end);
+      if (s < e) segs.push({ node:t.node, s:s - t.start, e:e - t.start });
+    }
+    for (const g of segs) {
+      let mid = g.s > 0 ? g.node.splitText(g.s) : g.node;
+      if (g.e - g.s < mid.data.length) mid.splitText(g.e - g.s);
+      const m = document.createElement('mark');
+      m.className = 'hl' + (n.comment.trim() ? ' has-comment' : '');
+      m.dataset.id = n.id;
+      m.dataset.tag = tagAttr(n.tag);
+      mid.replaceWith(m);
+      m.appendChild(mid);
+    }
+  }
+}
+function anchorPos(n) {   // icon's vertical position, relative to #doc
+  const docRect = doc.getBoundingClientRect();
+  if (hasFrag(n) && !n.orphan) {
+    const r = rangeFromOffsets(n.start, n.end);
+    const rects = r ? [...r.getClientRects()].filter(x => x.height > 0) : [];
+    if (rects.length) {
+      const first = rects[0], last = rects[rects.length - 1];
+      return (first.top + last.bottom) / 2 - docRect.top - 10;
+    }
+  }
+  if (n.anchorOffset != null) {
+    const r = rangeFromOffsets(n.anchorOffset, Math.min(n.anchorOffset + 1, doc.textContent.length));
+    const rects = r ? [...r.getClientRects()].filter(x => x.height > 0) : [];
+    if (rects.length) return rects[0].top + rects[0].height / 2 - docRect.top - 10;
+  }
+  return null;
+}
+function renderIcons() {
+  doc.querySelectorAll('.gdot').forEach(d => d.remove());
+  const used = { left:[], right:[] };
+  const list = notes
+    .filter(n => isValid(n) || n.id === openId)
+    .map(n => ({ n, y: anchorPos(n) }))
+    .filter(x => x.y != null)
+    .sort((a,b) => a.y - b.y);
+  for (const { n, y:y0 } of list) {
+    const side = n.side || 'left';
+    let y = y0;
+    for (const uy of used[side]) if (Math.abs(y - uy) < 25) y = uy + 25;
+    used[side].push(y);
+    const el = document.createElement('button');
+    el.className = 'gdot' + (n.id === openId ? ' active' : '') + (!hasFrag(n) ? ' movable' : '');
+    el.dataset.id = n.id;
+    el.dataset.tag = tagAttr(n.tag);
+    el.dataset.side = side;
+    el.style.top = y + 'px';
+    el.style[side] = '3px';
+    el.innerHTML = n.comment.trim() ? BUBBLE_SVG : MARKER_SVG;
+    el.setAttribute('aria-label', `Nota (${tagLabel(n.tag)})`);
+    doc.appendChild(el);
+  }
+}
+/* persistent handles: on iOS a touch drag stays captured by the
+   element where it started — recreate it mid-drag and the gesture dies.
+   That's why the same two nodes are always repositioned. */
+const hStart = document.createElement('div'); hStart.className = 'hand start';
+const hEnd   = document.createElement('div'); hEnd.className   = 'hand end';
+function renderHandles() {
+  const n = openNote();
+  const r = (n && hasFrag(n) && !n.orphan) ? rangeFromOffsets(n.start, n.end) : null;
+  const rects = r ? [...r.getClientRects()].filter(x => x.height > 0) : [];
+  if (!rects.length) { hStart.remove(); hEnd.remove(); return; }
+  const docRect = doc.getBoundingClientRect();
+  const first = rects[0], last = rects[rects.length - 1];
+  const put = (h, x, y) => {
+    h.style.setProperty('--tag', tagCss(n.tag));
+    // CONTENT coordinates: in page mode #doc is scrolled along x
+    h.style.left = (x - docRect.left + doc.scrollLeft) + 'px';
+    h.style.top = (y - docRect.top) + 'px';
+    if (!h.parentNode) doc.appendChild(h);
+  };
+  put(hStart, first.left, first.top - 6);
+  put(hEnd, last.right, last.bottom + 6);
+}
+/* page-cross arrows: when the word before/after the open fragment lives on
+   another page (drags can't cross pages), an arrow turns the page, extends
+   the fragment by that word and keeps the note open */
+const pgxPrev = document.createElement('button');
+pgxPrev.className = 'pgx prev'; pgxPrev.textContent = '‹';
+pgxPrev.setAttribute('aria-label', 'Extender el resaltado a la página anterior');
+const pgxNext = document.createElement('button');
+pgxNext.className = 'pgx next'; pgxNext.textContent = '›';
+pgxNext.setAttribute('aria-label', 'Extender el resaltado a la página siguiente');
+function pgxGo(dir) {
+  const n = openNote();
+  if (!n || !hasFrag(n)) return;
+  if (dir > 0) {
+    const nw = nextWordEnd(n.end);
+    if (nw == null) return;
+    n.end = nw;
+  } else {
+    const pw = prevWordStart(n.start);
+    if (pw == null) return;
+    n.start = pw;
+  }
+  n.exact = doc.textContent.slice(n.start, n.end);
+  persist();
+  gotoPage(paged.page + dir);
+  repaint();
+}
+pgxPrev.addEventListener('click', (e) => { e.stopPropagation(); pgxGo(-1); });
+pgxNext.addEventListener('click', (e) => { e.stopPropagation(); pgxGo(1); });
+function renderPgx() {
+  const n = openNote();
+  if (!pagedOn() || !n || !hasFrag(n) || n.orphan) { pgxPrev.remove(); pgxNext.remove(); return; }
+  const r = rangeFromOffsets(n.start, n.end);
+  const rects = r ? [...r.getClientRects()].filter(x => x.height > 0) : [];
+  const onPage = rects.filter(rc => pageOfRect(rc.left) === paged.page);
+  if (!onPage.length) { pgxPrev.remove(); pgxNext.remove(); return; }
+  const docRect = doc.getBoundingClientRect();
+  // vertical limit in VIEWPORT coords: the page box, and the comment card
+  let maxY = docRect.top + doc.clientHeight - 32;
+  const cb = $('#cbox');
+  if (cb && cb.classList.contains('open')) {
+    const ct = cb.getBoundingClientRect().top - 32;
+    if (ct > docRect.top + 40) maxY = Math.min(maxY, ct);
+  }
+  const put = (b, vx, vy) => {
+    b.style.setProperty('--tag', tagCss(n.tag));
+    b.style.left = Math.max(4, Math.min(vx, innerWidth - 30)) + 'px';
+    b.style.top = Math.max(docRect.top + 4, Math.min(vy, maxY)) + 'px';
+    if (!b.parentNode) document.body.appendChild(b);
+  };
+  // each arrow sits CENTERED on the fragment's edge — a deliberate "cap"
+  // over the highlight, half in, half out. The anchor is the rect of the
+  // EDGE CHARACTER on this page (whole-range rects fragment/merge in
+  // non-visual order, which used to land the arrow mid-line).
+  const edgeOffset = (side) => {          // fragment offset at this page's edge
+    let lo = n.start, hi = n.end - 1;
+    for (let i = 0; i < 22 && lo < hi; i++) {
+      if (side === 'end') {
+        const mid = (lo + hi + 1) >> 1;
+        const pm = pageOfOffset(mid);
+        if (pm != null && pm > paged.page) hi = mid - 1; else lo = mid;
+      } else {
+        const mid = (lo + hi) >> 1;
+        const pm = pageOfOffset(mid);
+        if (pm != null && pm < paged.page) lo = mid + 1; else hi = mid;
+      }
+    }
+    return side === 'end' ? lo : hi;
+  };
+  const charRect = (off) => {             // rect of one char, scanning past gaps
+    for (let d = 0; d < 40; d++) for (const o of [off + d, off - d]) {
+      if (o < n.start || o >= n.end) continue;
+      const r = rangeFromOffsets(o, o + 1);
+      if (!r) continue;
+      for (const rc of r.getClientRects()) if (rc.width || rc.height) {
+        if (pageOfRect(rc.left) === paged.page) return rc;
+      }
+    }
+    return null;
+  };
+  // ‹ in the page's left outer margin, › in the right one, each at the
+  // height of its edge line (viewport coords: these nodes hang off body)
+  const pw = prevWordStart(n.start);
+  const ppg = pw == null ? null : pageOfOffset(pw);
+  const rcS = (ppg != null && ppg < paged.page) ? charRect(edgeOffset('start')) : null;
+  if (rcS) put(pgxPrev, docRect.left - 36, rcS.top + rcS.height / 2 - 13);
+  else pgxPrev.remove();
+  const nw = nextWordEnd(n.end);
+  const npg = nw == null ? null : pageOfOffset(nw - 1);
+  const rcE = (npg != null && npg > paged.page) ? charRect(edgeOffset('end')) : null;
+  if (rcE) put(pgxNext, docRect.right + 10, rcE.top + rcE.height / 2 - 13);
+  else pgxNext.remove();
+}
+function repaint() {
+  paintMarks();
+  renderIcons();
+  renderHandles();
+  if (openId) { positionBar(); positionCbox(); }
+  renderPgx();           // after positionCbox: the arrows dodge the comment card
+  // the card settles async (visualViewport/keyboard): re-dodge once settled
+  if (openId) setTimeout(renderPgx, 220);
+  updateBadge();
+  refreshNar();          // highlight ranges are invalidated when marks are repainted
+}
+function updateBadge() {
+  const b = $('#notes-badge');
+  const count = notes.filter(isValid).length;
+  b.hidden = count === 0;
+  b.textContent = count > 99 ? '99' : count;
+}
+function flashNote(id) {
+  doc.querySelectorAll(`mark.hl[data-id="${id}"]`).forEach(m => {
+    m.classList.add('flash');
+    setTimeout(() => m.classList.remove('flash'), 1200);
+  });
+}
+
+/* ╔══════════════════════════════════════════════════════════╗
+   ║ 5 · Persistence and mutations                              ║
+   ╚══════════════════════════════════════════════════════════╝ */
+function persist(){ save(K_NOTES, notes.filter(isValid)); }
+function persistSoon(){ clearTimeout(persistTimer); persistTimer = setTimeout(persist, 400); }
+let lastDeleted = null;
+function removeNote(id, silent) {
+  const i = notes.findIndex(x => x.id === id);
+  if (i < 0) return;
+  const wasValid = isValid(notes[i]);
+  lastDeleted = notes[i];
+  notes.splice(i, 1);
+  if (openId === id) closeEditor(false);
+  persist(); repaint();
+  if ($('#drawer').classList.contains('open')) renderDrawer();
+  if (silent || !wasValid) return;
+  toast('Nota eliminada', { label:'Deshacer', fn(){
+    if (lastDeleted) { notes.push(lastDeleted); lastDeleted = null; persist(); repaint();
+      if ($('#drawer').classList.contains('open')) renderDrawer(); }
+  }});
+}
+
+/* ╔══════════════════════════════════════════════════════════╗
+   ║ 6 · Open-note UI: minibar + comment box                    ║
+   ║   The minibar (color · comment · delete) appears           ║
+   ║   next to the note without covering it. The comment is     ║
+   ║   written in a box docked at the screen bottom.            ║
+   ╚══════════════════════════════════════════════════════════╝ */
+const bar = document.createElement('div');
+bar.id = 'minibar';
+const cbox = document.createElement('div');
+cbox.id = 'cbox';
+let barState = 'main';   // 'main' | 'tags'
+
+function renderBar() {
+  const n = openNote();
+  if (!n) return;
+  bar.innerHTML = '';
+  if (barState === 'tags') {
+    for (const k of [null, ...TAG_KEYS]) {
+      const b = document.createElement('button');
+      b.className = 'mb-btn';
+      b.title = tagLabel(k);
+      b.setAttribute('aria-label', tagLabel(k));
+      const d = document.createElement('span');
+      d.className = 'mb-tagdot' + (k === null ? ' none' : '') + (n.tag === k ? ' sel' : '');
+      if (k) d.style.setProperty('--c', TAGS[k].css);
+      b.appendChild(d);
+      b.onclick = () => {
+        dlog('tag → ' + (k || 'none'));
+        n.tag = k;
+        if (k) { prefs.tag = k; save(K_PREFS, prefs); applyModeTag(); }
+        persist(); barState = 'main';
+        repaint(); renderBar(); positionBar(); syncCboxTag();
+      };
+      bar.appendChild(b);
+    }
+  } else {
+    const color = document.createElement('button');
+    color.className = 'mb-btn';
+    color.title = 'Color / tag';
+    color.setAttribute('aria-label', 'Elegir tag de color');
+    color.innerHTML = `<span class="mb-cur"></span>`;
+    color.querySelector('.mb-cur').style.setProperty('--c', tagCss(n.tag));
+    color.onclick = () => { dlog('color btn'); barState = 'tags'; renderBar(); positionBar(); };
+    bar.appendChild(color);
+    const com = document.createElement('button');
+    com.className = 'mb-btn';
+    com.title = 'Comentario';
+    com.setAttribute('aria-label', 'Escribir comentario');
+    com.innerHTML = '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>'
+      + (n.comment.trim() ? '<span class="mb-st"></span>' : '');
+    com.onclick = () => openCbox(true);
+    bar.appendChild(com);
+    if (!n.comment.trim()) {
+      const mic = document.createElement('button');
+      mic.className = 'mb-btn mb-mic' + (SR ? '' : ' off');
+      mic.title = 'Nota por voz';
+      mic.setAttribute('aria-label', 'Dictar comentario');
+      mic.innerHTML = MIC_SVG;
+      mic.onclick = () => {
+        if (!SR) { toast(dictUnavailableMsg()); return; }
+        if (rec) { stopDict(); return; }
+        openCbox(false);           // opens the box without the keyboard
+        startDict();
+      };
+      bar.appendChild(mic);
+    }
+    const del = document.createElement('button');
+    del.className = 'mb-btn danger';
+    del.title = 'Eliminar';
+    del.setAttribute('aria-label', 'Eliminar nota');
+    del.innerHTML = TRASH_SVG;
+    del.onclick = () => removeNote(n.id);
+    bar.appendChild(del);
+  }
+}
+function positionBar() {
+  const n = openNote();
+  if (!n) return;
+  const docRect = doc.getBoundingClientRect();
+  let top = null, bottom = null, left = null, right = null;
+  const take = (rects) => {
+    top = Math.min(...rects.map(rc => rc.top));
+    bottom = Math.max(...rects.map(rc => rc.bottom));
+    left = Math.min(...rects.map(rc => rc.left));
+    right = Math.max(...rects.map(rc => rc.right));
+  };
+  if (hasFrag(n) && !n.orphan) {
+    const r = rangeFromOffsets(n.start, n.end);
+    let rects = r ? [...r.getClientRects()].filter(x => x.height > 0) : [];
+    // a page-crossing fragment has rects on OTHER pages (off-screen):
+    // anchor only to what is visible on the current page
+    if (pagedOn()) {
+      const vis = rects.filter(rc => pageOfRect(rc.left) === paged.page);
+      if (vis.length) rects = vis;
+    }
+    if (rects.length) take(rects);
+  } else if (n.anchorOffset != null) {
+    const r = rangeFromOffsets(n.anchorOffset, Math.min(n.anchorOffset + 1, doc.textContent.length));
+    const rects = r ? [...r.getClientRects()].filter(x => x.height > 0) : [];
+    if (rects.length) take(rects);
+  }
+  if (top == null) return;
+  const barH = bar.offsetHeight || 50;
+  const barW = bar.offsetWidth || 150;
+  // vertical: right under the fragment, clearing the end handle; above
+  // it (clearing the start handle) when there is no room below — against
+  // the page box in paged mode, the viewport in scroll mode
+  const limit = pagedOn() ? docRect.top + doc.clientHeight - 8 : innerHeight - 110;
+  let y = bottom - docRect.top + 26;
+  if (bottom + 26 + barH > limit) y = top - docRect.top - barH - 26;
+  bar.style.top = Math.max(4, y) + 'px';
+  // horizontal: centered on the fragment (iOS-callout style), kept
+  // inside the current page box
+  const sx = doc.scrollLeft;
+  const boxL = pagedOn() ? sx : 0;
+  const boxR = boxL + doc.clientWidth;
+  let x = (left + right) / 2 - docRect.left + sx - barW / 2;
+  x = Math.max(boxL + 8, Math.min(x, boxR - barW - 8));
+  bar.style.left = x + 'px';
+  bar.style.right = 'auto';
+}
+
+/* --- voice dictation (Web Speech API) ---
+   Writes into the comment textarea: what's already written stays as the
+   base and recognized text is appended (interim included, to see it live). */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+let rec = null;
+function dictUI() {
+  cbox.querySelector('#cb-mic')?.classList.toggle('rec', !!rec);
+  bar.querySelector('.mb-mic')?.classList.toggle('rec', !!rec);
+}
+function stopDict() {
+  if (!rec) return;
+  const r = rec; rec = null;
+  try { r.stop(); } catch {}
+  dictUI();
+}
+function startDict() {
+  if (!SR || rec || !openNote()) return;
+  const ta = cbox.querySelector('#cb-text');
+  const base = ta.value.trim() ? ta.value.replace(/\s+$/, '') + ' ' : '';
+  const r = new SR();
+  r.lang = 'es-AR';
+  r.continuous = true;
+  r.interimResults = true;
+  r.onresult = (e) => {
+    let fin = '', interim = '';
+    for (const res of e.results) {
+      if (res.isFinal) fin += res[0].transcript; else interim += res[0].transcript;
+    }
+    ta.value = base + fin + interim;
+    ta.dispatchEvent(new Event('input'));    // persists, autogrows, bubble state
+  };
+  r.onerror = (e) => {
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed')
+      toast('Permití el acceso al micrófono para dictar');
+  };
+  r.onend = () => { if (rec === r) rec = null; dictUI(); };
+  rec = r;
+  try { r.start(); } catch { rec = null; return; }
+  dictUI();
+}
+
+function buildCbox() {
+  cbox.innerHTML = '';
+  const ta = document.createElement('textarea');
+  ta.id = 'cb-text';
+  ta.rows = 1;
+  ta.placeholder = 'Escribí un comentario…';
+  ta.setAttribute('autocomplete', 'off');   // less iOS autofill bar
+  ta.setAttribute('autocapitalize', 'sentences');
+  ta.addEventListener('input', () => {
+    const n = openNote();
+    if (!n) return;
+    n.comment = ta.value;
+    persistSoon();
+    autogrow(ta);
+    doc.querySelectorAll(`mark.hl[data-id="${n.id}"]`)
+       .forEach(m => m.classList.toggle('has-comment', !!n.comment.trim()));
+    const dot = doc.querySelector(`.gdot[data-id="${n.id}"]`);
+    if (dot) dot.innerHTML = n.comment.trim() ? BUBBLE_SVG : MARKER_SVG;
+  });
+  cbox.appendChild(ta);
+  const row = document.createElement('div');
+  row.className = 'cb-row';
+  cbox.appendChild(row);
+  doc.appendChild(cbox);
+  renderCbRow();
+}
+/* cbox action row: on desktop only the mic (the rest lives in the
+   minibar); in the mobile sheet also tag, delete and close. No "Done"
+   button: the note saves itself as you type. */
+let cbRowTags = false;
+function cbBtn(cls, html, label, fn) {
+  const b = document.createElement('button');
+  b.className = 'cb-btn' + (cls ? ' ' + cls : '');
+  b.innerHTML = html;
+  b.title = label;
+  b.setAttribute('aria-label', label);
+  b.onclick = fn;
+  return b;
+}
+function renderCbRow() {
+  const row = cbox.querySelector('.cb-row');
+  if (!row) return;
+  row.innerHTML = '';
+  const n = openNote();
+  if (cbRowTags && n) {
+    for (const k of [null, ...TAG_KEYS]) {
+      const b = cbBtn('cb-only-sheet', '', tagLabel(k), () => {
+        n.tag = k;
+        if (k) { prefs.tag = k; save(K_PREFS, prefs); applyModeTag(); }
+        persist(); cbRowTags = false;
+        repaint(); renderCbRow(); syncCboxTag();
+      });
+      const d = document.createElement('span');
+      d.className = 'mb-tagdot' + (k === null ? ' none' : '') + (n.tag === k ? ' sel' : '');
+      if (k) d.style.setProperty('--c', TAGS[k].css);
+      b.appendChild(d);
+      row.appendChild(b);
+    }
+    return;
+  }
+  const tag = cbBtn('cb-only-sheet', '<span class="mb-cur"></span>', 'Color / tag',
+    () => { cbRowTags = true; renderCbRow(); });
+  tag.querySelector('.mb-cur').style.setProperty('--c', tagCss(n?.tag));
+  row.appendChild(tag);
+  row.appendChild(cbBtn('cb-only-sheet danger', TRASH_SVG, 'Eliminar nota',
+    () => { if (openId) removeNote(openId); }));
+  const spacer = document.createElement('span');
+  spacer.className = 'cb-spacer';
+  row.appendChild(spacer);
+  const mic = cbBtn(SR ? '' : 'off', MIC_SVG, 'Dictar comentario', () => {
+    if (!SR) { toast(dictUnavailableMsg()); return; }
+    rec ? stopDict() : startDict();
+  });
+  mic.id = 'cb-mic';
+  // without stealing focus: if the keyboard is open it stays open,
+  // and if it isn't, dictation runs without opening it
+  mic.addEventListener('pointerdown', (e) => e.preventDefault());
+  row.appendChild(mic);
+  row.appendChild(cbBtn('cb-only-sheet',
+    '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>',
+    'Cerrar', () => closeEditor()));
+}
+function dictUnavailableMsg() {
+  return !isSecureContext
+    ? 'El dictado necesita HTTPS — por IP el navegador lo bloquea'
+    : 'Este navegador no soporta dictado por voz';
+}
+function autogrow(ta) {
+  ta.style.height = 'auto';
+  ta.style.height = Math.min(140, ta.scrollHeight) + 'px';
+  syncKb();                // the strip height changed: re-pin and re-shift
+}
+function syncCboxTag() {
+  cbox.style.setProperty('--cb-tag', tagCss(openNote()?.tag));
+}
+/* on-screen keyboard state (visualViewport). With the keyboard open the
+   editor is a full-width strip glued to its top edge; otherwise, on
+   EVERY device, minibar + box anchor to the note like on desktop. */
+const kbIsOpen = () => {
+  const vv = window.visualViewport;
+  return !!vv && (innerHeight - vv.height - vv.offsetTop) > 40;
+};
+let kbWas = false;
+function syncKb() {
+  const kb = kbIsOpen() && cbox.classList.contains('open');
+  document.body.classList.toggle('kb-open', kb);
+  if (kb) {
+    pinCbox();
+    shiftDocForKb();
+  } else {
+    doc.style.top = '';
+    if (cbox.classList.contains('open')) { positionBar(); positionCbox(); }
+  }
+  if (kb !== kbWas) { kbWas = kb; renderPgx(); }
+}
+/* the strip must not cover the fragment being annotated: shift the whole
+   document up just enough (relative top — NOT transform, which would
+   break the strip's position:fixed) and undo it when the keyboard goes */
+function shiftDocForKb() {
+  doc.style.top = '';
+  const n = openNote();
+  if (!n || !hasFrag(n) || n.orphan) return;
+  const r = rangeFromOffsets(n.start, n.end);
+  const rects = r ? [...r.getClientRects()].filter(x => x.height > 0) : [];
+  const vis = rects.filter(rc => rc.left >= 0 && rc.right <= innerWidth);
+  if (!vis.length) return;
+  const bottom = Math.max(...vis.map(rc => rc.bottom));
+  const top = Math.min(...vis.map(rc => rc.top));
+  const stripTop = cbox.getBoundingClientRect().top;
+  const over = bottom - (stripTop - 12);
+  if (over <= 0) return;
+  const shift = Math.min(over, Math.max(0, top - 58));   // keep the first line under the header
+  if (shift > 0) doc.style.top = -shift + 'px';
+}
+function pinCbox() {
+  if (!cbox.classList.contains('open')) {
+    cbox.style.top = ''; cbox.style.bottom = ''; cbox.style.transform = '';
+    return;
+  }
+  if (!document.body.classList.contains('kb-open')) return;
+  const vv = window.visualViewport;
+  if (!vv) return;
+  // visual viewport coordinates: valid at any scroll position; the strip
+  // sits flush against the keyboard's top edge
+  cbox.style.bottom = 'auto';
+  cbox.style.top = (vv.offsetTop + vv.height - cbox.offsetHeight) + 'px';
+}
+if (window.visualViewport) {
+  visualViewport.addEventListener('resize', syncKb);
+  visualViewport.addEventListener('scroll', syncKb);
+}
+addEventListener('scroll', () => { if (cbox.classList.contains('open')) syncKb(); }, { passive:true });
+function positionCbox() {
+  if (!cbox.classList.contains('open')) return;
+  if (document.body.classList.contains('kb-open')) return;   // pinCbox owns the strip
+  const n = openNote();
+  if (!n) return;
+  const barTop = parseFloat(bar.style.top) || 0;
+  const barH = bar.offsetHeight || 50;
+  const boxH = cbox.offsetHeight || 80;
+  // the stack never sandwiches the highlight: when the bar sits ABOVE
+  // the note (flipped), the box goes above the bar; below it otherwise
+  const r = hasFrag(n) && !n.orphan ? rangeFromOffsets(n.start, n.end) : null;
+  let rects = r ? [...r.getClientRects()].filter(x => x.height > 0) : [];
+  if (pagedOn()) {
+    const vis = rects.filter(rc => pageOfRect(rc.left) === paged.page);
+    if (vis.length) rects = vis;
+  }
+  const noteTop = rects.length
+    ? Math.min(...rects.map(rc => rc.top)) - doc.getBoundingClientRect().top
+    : barTop + 1;
+  let top = barTop < noteTop ? barTop - boxH - 8 : barTop + barH + 8;
+  // and it stays inside the page box in paged mode (it used to get
+  // clipped by #doc's overflow for notes in the lower half)
+  if (pagedOn() && top + boxH > doc.clientHeight - 8) top = barTop - boxH - 8;
+  top = Math.max(8, top);
+  cbox.style.top = top + 'px';
+  // horizontal: centered under the bar (which is centered on the
+  // fragment), kept inside the current page box
+  const boxW = cbox.offsetWidth || 360;
+  const barW = bar.offsetWidth || 150;
+  const barLeft = parseFloat(bar.style.left) || 0;
+  const sx = doc.scrollLeft;
+  const bL = pagedOn() ? sx : 0;
+  const bR = bL + doc.clientWidth;
+  let x = barLeft + barW / 2 - boxW / 2;
+  x = Math.max(bL + 8, Math.min(x, bR - boxW - 8));
+  cbox.style.left = x + 'px';
+  cbox.style.right = 'auto';
+}
+function openCbox(focus) {
+  const n = openNote();
+  if (!n) return;
+  const ta = cbox.querySelector('#cb-text');
+  ta.value = n.comment;
+  syncCboxTag();
+  cbRowTags = false;
+  renderCbRow();
+  cbox.classList.add('open');
+  autogrow(ta);
+  positionBar();
+  positionCbox();
+  syncKb();
+  // focus must be synchronous within the gesture: if deferred,
+  // iOS ignores the focus and the keyboard never shows up
+  if (focus) ta.focus();
+}
+function closeCbox() {
+  stopDict();
+  cbox.querySelector('#cb-text')?.blur();
+  cbox.classList.remove('open');
+  document.body.classList.remove('kb-open');
+  kbWas = false;
+  doc.style.top = '';
+  cbox.style.transform = '';
+  cbox.style.top = '';
+  cbox.style.bottom = '';
+}
+
+function openEditor(id, { focus = false } = {}) {
+  if (openId && openId !== id) closeEditor();
+  openId = id;
+  openScrollY = scrollY;
+  const n = note(id);
+  if (!n) { openId = null; return; }
+  barState = 'main';
+  if (!bar.parentNode) doc.appendChild(bar);
+  bar.classList.add('open');
+  renderBar();
+  repaint();
+  positionBar();
+  setHoverSent(-1);                        // narration hover doesn't apply with a note open
+  if (n.comment.trim() || focus) openCbox(focus);
+  else closeCbox();
+}
+/* closing = trusting the autosave; an empty note is discarded */
+function closeEditor(announce = true) {
+  const n = openNote();
+  openId = null;
+  bar.classList.remove('open');
+  closeCbox();
+  if (n && !isValid(n)) {
+    const i = notes.findIndex(x => x.id === n.id);
+    if (i >= 0) notes.splice(i, 1);
+  } else if (n) {
+    persist();
+    if (announce) toastOnce('Nota guardada');
+  }
+  repaint();
+  if ($('#drawer').classList.contains('open')) renderDrawer();
+}
+let lastToast = 0;
+function toastOnce(msg) {
+  if (Date.now() - lastToast < 1500) return;
+  lastToast = Date.now();
+  toast(msg);
+}
+
+/* ╔══════════════════════════════════════════════════════════╗
+   ║ 7 · Double-tap notes (no mode)                             ║
+   ║   No note mode: double click/tap on a word creates the     ║
+   ║   note and pauses the narration if playing. To resume      ║
+   ║   the audio, the person presses play.                      ║
+   ╚══════════════════════════════════════════════════════════╝ */
+function applyModeTag() {
+  doc.style.setProperty('--active-tag', tagCss(prefs.tag));
+  document.documentElement.style.setProperty('--mode-tag-c', tagCss(prefs.tag));
+}
+function pauseNar() {
+  if (!narOn || !nar.audio) return;
+  clearTimeout(narSeekTimer);              // the 1st click of a double must not seek
+  if (!nar.audio.paused) nar.audio.pause();
+}
+
+/* --- create / attach fragment --- */
+let suppressSelUntil = 0;
+function attachFragment(start, end, side) {
+  const txt = doc.textContent;
+  start = Math.max(0, start); end = Math.min(txt.length, end);
+  if (end <= start) return;
+  let n = openNote();
+  if (!n) {
+    n = { id:uid(), tag:prefs.tag, comment:'', side: side || 'left', created:new Date().toISOString() };
+    notes.push(n);
+  }
+  delete n.anchorOffset;
+  if (side) n.side = side;
+  n.start = start; n.end = end; n.exact = txt.slice(start, end);
+  persist();
+  openEditor(n.id);
+  flashNote(n.id);
+  // iOS re-selects the word an instant after the double tap and its
+  // native handles would cover ours: suppress that selection echo
+  suppressSelUntil = Date.now() + 600;
+  const wipe = () => { try { getSelection().removeAllRanges(); } catch {} };
+  wipe();
+  setTimeout(wipe, 120);
+  setTimeout(wipe, 350);
+}
+function commitSelectionIfAny() {
+  const s = getSelection();
+  if (!s || s.isCollapsed || !s.rangeCount ||
+      !doc.contains(s.anchorNode) || !doc.contains(s.focusNode)) return false;
+  const r = s.getRangeAt(0);
+  const start = absOffset(r.startContainer, r.startOffset);
+  const end   = absOffset(r.endContainer, r.endOffset);
+  if (end <= start) return false;
+  const rect = r.getBoundingClientRect();
+  const docRect = doc.getBoundingClientRect();
+  const side = (rect.left + rect.width / 2 - docRect.left) < docRect.width / 2 ? 'left' : 'right';
+  attachFragment(start, end, side);
+  return true;
+}
+
+/* --- double tap = note --- */
+function sideFromX(x) {
+  const rect = doc.getBoundingClientRect();
+  return (x - rect.left) < rect.width / 2 ? 'left' : 'right';
+}
+function doubleTap(x, y) {
+  const off = caretOffsetFromPoint(x, y);
+  if (off == null) return;
+  const w = wordBoundsAt(off);
+  if (!w) return;
+  // if the open note has no fragment yet, the highlight is added to it
+  const n = openNote();
+  if (n && hasFrag(n)) closeEditor();
+  attachFragment(w[0], w[1], sideFromX(x));
+}
+
+/* router: only detects the double tap; there is no single-tap action.
+   A swipe also ends in a pointerup: if the pointer moved more than
+   12px since pointerdown, it is NOT a tap and doesn't count as double. */
+let tapDown = null;
+document.addEventListener('pointerdown', (e) => {
+  tapDown = { x: e.clientX, y: e.clientY };
+}, { capture: true, passive: true });
+document.addEventListener('pointerup', (e) => {
+  const tgt = e.target instanceof Element ? e.target : null;
+  if (!tgt || !doc.contains(tgt)) return;
+  if (tgt.closest('#minibar, #cbox, .hand, .gdot, .pgx, mark.hl')) return;
+  const x = e.clientX, y = e.clientY;
+  if (tapDown && Math.hypot(x - tapDown.x, y - tapDown.y) > 12) {
+    lastTap = { t: 0, x: 0, y: 0 };          // it was a drag/swipe
+    return;
+  }
+  const now = performance.now();
+  const isDbl = (now - lastTap.t < 400) && Math.hypot(x - lastTap.x, y - lastTap.y) < 36;
+  lastTap = { t: now, x, y };
+  if (!isDbl) return;
+  pauseNar();                    // annotating pauses the audio; play to resume
+  dismissHint();
+  doubleTap(x, y);
+  // the browser still fires the 2nd tap's click AFTER this pointerup, and
+  // its target predates the new <mark> — without this, that ghost click
+  // hits the close-on-outside-tap handler and shuts the just-opened editor
+  suppressClickUntil = performance.now() + 300;
+});
+
+/* tapping a highlight or icon opens the editor (and pauses narration) */
+let suppressClickUntil = 0;      // the ghost click right after a double-tap creation
+doc.addEventListener('click', (e) => {
+  if (performance.now() < suppressClickUntil) return;
+  const hit = e.target.closest('mark.hl, .gdot');
+  if (hit) { e.stopPropagation(); pauseNar(); openEditor(hit.dataset.id); return; }
+  if (openId && !e.target.closest('#minibar, #cbox, .hand, .pgx')) closeEditor();
+});
+document.addEventListener('click', (e) => {
+  if (performance.now() < suppressClickUntil) return;
+  if (!openId) return;
+  if (e.target.closest('#minibar, #cbox, #doc, #drawer, .pgx')) return;
+  closeEditor();
+}, true);
+
+/* ╔══════════════════════════════════════════════════════════╗
+   ║ 8 · Handles: stretching the fragment                       ║
+   ╚══════════════════════════════════════════════════════════╝ */
+/* two paths: pointer events for mouse/pen, touch events for the finger.
+   On iOS, preventDefault on touchstart is the only thing that guarantees
+   the browser won't steal the gesture for scroll or native selection. */
+let dragHand = null;   // { which:'start'|'end', n, touch, dy }
+function startHandDrag(h, touch, y0) {
+  const n = openNote();
+  if (!n || !hasFrag(n)) return false;
+  const which = h.classList.contains('start') ? 'start' : 'end';
+  // remember the finger↔line offset: the circle hangs off the line,
+  // and the sampling point must land on the line, not on the handle
+  let dy = 0;
+  const r = rangeFromOffsets(n.start, n.end);
+  const rects = r ? [...r.getClientRects()].filter(x => x.height > 0) : [];
+  if (rects.length && y0 != null) {
+    const line = which === 'start' ? rects[0] : rects[rects.length - 1];
+    dy = y0 - (line.top + line.height / 2);
+  }
+  dragHand = { which, n, touch, dy };
+  document.body.classList.add('dragging');
+  document.body.style.userSelect = 'none';
+  document.body.style.webkitUserSelect = 'none';
+  return true;
+}
+/* column (page) that a text offset is laid out in, or null in the gaps */
+function pageOfOffset(off) {
+  const r = rangeFromOffsets(off, off + 1);
+  if (!r) return null;
+  for (const rc of r.getClientRects()) if (rc.width || rc.height) return pageOfRect(rc.left);
+  return null;
+}
+function moveHandDrag(x, y) {
+  const off = caretOffsetFromPoint(x, y - (dragHand.dy || 0));
+  if (!dragHand.logged) { dragHand.logged = 1; dlog('drag off=' + off + ' rango=' + dragHand.n.start + '-' + dragHand.n.end); }
+  if (off == null) return;
+  // a drag can only target the visible page: WebKit's hit-testing near the
+  // page edges (iPad) resolves margin points into ANOTHER column, which
+  // used to balloon the fragment across pages — those moves are ignored
+  // (crossing pages is what the .pgx arrows are for)
+  if (pagedOn()) {
+    const pg = pageOfOffset(off);
+    if (pg != null && pg !== paged.page) return;
+  }
+  const n = dragHand.n;
+  if (dragHand.which === 'start') {
+    const ns = Math.min(snapStart(off), n.end - 1);
+    if (ns !== n.start) { n.start = ns; scheduleDragPaint(); }
+  } else {
+    const ne = Math.max(snapEnd(off), n.start + 1);
+    if (ne !== n.end) { n.end = ne; scheduleDragPaint(); }
+  }
+}
+function endHandDrag() {
+  if (!dragHand) return;
+  const n = dragHand.n;
+  n.exact = doc.textContent.slice(n.start, n.end);
+  dragHand = null;
+  document.body.classList.remove('dragging');
+  document.body.style.userSelect = '';
+  document.body.style.webkitUserSelect = '';
+  persist(); repaint();
+}
+/* separate paths: the finger goes through touch events (on iOS,
+   preventing touchstart makes the browser abort the pointer path with an
+   immediate pointerup — that phantom pointerup must NOT end the drag);
+   mouse and pen go through pointer events */
+doc.addEventListener('pointerdown', (e) => {
+  const h = e.target instanceof Element ? e.target.closest('.hand') : null;
+  if (!h || e.pointerType === 'touch') return;
+  dlog('hand pointerdown ' + e.pointerType);
+  e.preventDefault();
+  if (!dragHand && startHandDrag(h, false, e.clientY)) h.setPointerCapture?.(e.pointerId);
+});
+doc.addEventListener('touchstart', (e) => {
+  const h = e.target instanceof Element ? e.target.closest('.hand') : null;
+  if (!h) return;
+  dlog('hand touchstart');
+  e.preventDefault();
+  if (!dragHand) startHandDrag(h, true, e.touches[0]?.clientY);
+}, { passive:false });
+document.addEventListener('pointermove', (e) => {
+  if (!dragHand || dragHand.touch) return;
+  e.preventDefault();
+  moveHandDrag(e.clientX, e.clientY);
+}, { passive:false });
+document.addEventListener('touchmove', (e) => {
+  if (!dragHand?.touch) return;
+  e.preventDefault();
+  const t = e.touches[0];
+  if (t) moveHandDrag(t.clientX, t.clientY);
+}, { passive:false });
+document.addEventListener('pointerup', () => { if (dragHand && !dragHand.touch) { dlog('hand end (pointerup)'); endHandDrag(); } });
+document.addEventListener('pointercancel', () => { if (dragHand && !dragHand.touch) { dlog('hand end (POINTERCANCEL)'); endHandDrag(); } });
+document.addEventListener('touchend', () => { if (dragHand?.touch) { dlog('hand end (touchend)'); endHandDrag(); } });
+document.addEventListener('touchcancel', () => { if (dragHand?.touch) { dlog('hand end (TOUCHCANCEL)'); endHandDrag(); } });
+let dragPaintPending = false;
+function scheduleDragPaint() {
+  if (dragPaintPending) return;
+  dragPaintPending = true;
+  requestAnimationFrame(() => {
+    dragPaintPending = false;
+    const n = dragHand?.n || openNote();
+    if (n && hasFrag(n)) n.exact = doc.textContent.slice(n.start, n.end);
+    repaint();
+  });
+}
+
+/* ╔══════════════════════════════════════════════════════════╗
+   ║ 9 · Draggable icon (notes without fragment)                ║
+   ╚══════════════════════════════════════════════════════════╝ */
+let dragDot = null;   // { el, n, x0, y0, moved, touch }
+function startDotDrag(g, x, y, touch) {
+  const n = note(g.dataset.id);
+  if (!n || hasFrag(n)) return;
+  dragDot = { el:g, n, x0:x, y0:y, moved:false, touch };
+}
+function moveDotDrag(x, y) {
+  if (!dragDot.moved && Math.hypot(x - dragDot.x0, y - dragDot.y0) < 7) return false;
+  dragDot.moved = true;
+  document.body.classList.add('dragging');
+  document.body.style.userSelect = 'none';
+  const docRect = doc.getBoundingClientRect();
+  dragDot.el.classList.add('dragging');
+  dragDot.el.style.top = (y - docRect.top - 10) + 'px';
+  const side = sideFromX(x);
+  if (side !== dragDot.el.dataset.side) {
+    dragDot.el.dataset.side = side;
+    dragDot.el.style.left = side === 'left' ? '3px' : 'auto';
+    dragDot.el.style.right = side === 'right' ? '3px' : 'auto';
+  }
+  return true;
+}
+function endDotDrag(x, y) {
+  const { n, moved } = dragDot;
+  dragDot.el.classList.remove('dragging');
+  document.body.classList.remove('dragging');
+  document.body.style.userSelect = '';
+  dragDot = null;
+  if (!moved) return false;                    // it was a tap: the router handles it
+  const off = caretOffsetFromPoint(x, y);
+  if (off != null) { n.anchorOffset = off; n.side = sideFromX(x); persist(); }
+  repaint();
+  if (openId === n.id) positionBar();
+  return true;
+}
+doc.addEventListener('pointerdown', (e) => {
+  const g = e.target instanceof Element ? e.target.closest('.gdot.movable') : null;
+  if (!g || e.pointerType === 'touch') return;
+  startDotDrag(g, e.clientX, e.clientY, false);
+  g.setPointerCapture?.(e.pointerId);
+});
+document.addEventListener('pointermove', (e) => {
+  if (!dragDot || dragDot.touch) return;
+  if (moveDotDrag(e.clientX, e.clientY)) e.preventDefault();
+}, { passive:false });
+document.addEventListener('pointerup', (e) => {
+  if (!dragDot || dragDot.touch) return;
+  endDotDrag(e.clientX, e.clientY);
+});
+doc.addEventListener('touchstart', (e) => {
+  const g = e.target instanceof Element ? e.target.closest('.gdot.movable') : null;
+  if (!g || !e.touches[0]) return;
+  startDotDrag(g, e.touches[0].clientX, e.touches[0].clientY, true);
+}, { passive:true });
+document.addEventListener('touchmove', (e) => {
+  if (!dragDot?.touch) return;
+  const t = e.touches[0];
+  if (t && moveDotDrag(t.clientX, t.clientY)) e.preventDefault();
+}, { passive:false });
+document.addEventListener('touchend', (e) => {
+  if (!dragDot?.touch) return;
+  const t = e.changedTouches[0];
+  endDotDrag(t ? t.clientX : dragDot.x0, t ? t.clientY : dragDot.y0);
+});
+
+/* ╔══════════════════════════════════════════════════════════╗
+   ║ 10 · Notes panel                                           ║
+   ╚══════════════════════════════════════════════════════════╝ */
+const drawer = $('#drawer');
+function notePos(n){ return hasFrag(n) ? n.start : (n.anchorOffset ?? 0); }
+function openDrawer() {
+  renderDrawer();
+  drawer.classList.add('open');
+  if (matchMedia('(max-width: 899px)').matches) $('#scrim').classList.add('on');
+}
+function closeDrawer() {
+  drawer.classList.remove('open');
+  $('#scrim').classList.remove('on');
+}
+$('#btn-notes').addEventListener('click', () => {
+  if (drawer.classList.contains('open')) closeDrawer(); else openDrawer();
+});
+$('#drawer-close').onclick = closeDrawer;
+$('#scrim').addEventListener('click', closeDrawer);
+
+function renderDrawer() {
+  const valid = notes.filter(isValid);
+  $('#drawer-count').textContent = valid.length ? `· ${valid.length}` : '';
+  const fWrap = $('#drawer-filters');
+  fWrap.innerHTML = '';
+  const mk = (key, label, colorCss, hollow) => {
+    const c = document.createElement('button');
+    c.className = 'fchip' + (hollow ? ' none' : '');
+    if (colorCss) c.style.setProperty('--c', colorCss);
+    c.setAttribute('aria-pressed', String(drawerFilter === key));
+    const count = key === 'all' ? valid.length
+                : key === 'untagged' ? valid.filter(n => !n.tag).length
+                : valid.filter(n => n.tag === key).length;
+    c.innerHTML = ((colorCss || hollow) ? '<span class="dot"></span>' : '') + `<span>${label}</span>` + (count ? ` <span style="opacity:.55">${count}</span>` : '');
+    c.onclick = () => { drawerFilter = key; renderDrawer(); };
+    fWrap.appendChild(c);
+  };
+  mk('all', 'Todas', null, false);
+  for (const k of TAG_KEYS) mk(k, TAGS[k].label, TAGS[k].css, false);
+  mk('untagged', 'Sin tag', null, true);
+
+  const list = $('#drawer-list');
+  list.innerHTML = '';
+  const shown = valid
+    .filter(n => drawerFilter === 'all' || (drawerFilter === 'untagged' ? !n.tag : n.tag === drawerFilter))
+    .sort((a,b) => notePos(a) - notePos(b));
+
+  if (!shown.length) {
+    const e = document.createElement('div');
+    e.className = 'drawer-empty';
+    e.innerHTML = valid.length
+      ? 'No hay notas con este tag.'
+      : '<span class="big">Sin notas todavía</span>Doble toque sobre una palabra para resaltarla y anotar; después estirá la selección con las manijas.';
+    list.appendChild(e);
+    return;
+  }
+  for (const n of shown) {
+    const item = document.createElement('div');
+    item.className = 'note-item';
+    item.setAttribute('role','button');
+    item.tabIndex = 0;
+    item.style.setProperty('--tag', tagCss(n.tag));
+    let html = '';
+    if (hasFrag(n)) html += `<p class="note-quote">“${escapeHtml(truncate(n.exact, 140))}”</p>`;
+    if (n.comment.trim()) html += `<p class="note-comment">${escapeHtml(n.comment)}</p>`;
+    html += `<div class="note-foot"><span class="note-tagname">${n.tag ? TAGS[n.tag].label : (hasFrag(n) ? '' : 'Al margen')}${n.orphan ? ' · sin anclar' : ''}</span>
+      <button class="note-del" aria-label="Eliminar nota" title="Eliminar">${TRASH_SVG}</button></div>`;
+    item.innerHTML = html;
+    item.querySelector('.note-del').onclick = (e) => { e.stopPropagation(); removeNote(n.id); };
+    const go = () => {
+      closeDrawer();
+      gotoNote(n);
+    };
+    item.onclick = go;
+    item.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } };
+    list.appendChild(item);
+  }
+}
+function gotoNote(n) {
+  if (pagedOn()) {
+    gotoOffsetPage(notePos(n), false);
+    setTimeout(() => { flashNote(n.id); openEditor(n.id); }, 150);
+    return;
+  }
+  const target = hasFrag(n)
+    ? doc.querySelector(`mark.hl[data-id="${n.id}"]`)
+    : doc.querySelector(`.gdot[data-id="${n.id}"]`);
+  if (!target) return;
+  target.scrollIntoView({ block:'center', behavior:'smooth' });
+  setTimeout(() => { flashNote(n.id); openEditor(n.id); }, 380);
+}
+function truncate(s, n){ return s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s; }
+function escapeHtml(s){ const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+/* ╔══════════════════════════════════════════════════════════╗
+   ║ 11 · Toast, keyboard, scroll, size, hint                   ║
+   ╚══════════════════════════════════════════════════════════╝ */
+let toastTimer = null;
+function toast(msg, action) {
+  const t = $('#toast');
+  t.innerHTML = '';
+  const span = document.createElement('span');
+  span.textContent = msg;
+  t.appendChild(span);
+  if (action) {
+    const b = document.createElement('button');
+    b.className = 't-act';
+    b.textContent = action.label;
+    b.onclick = () => { t.classList.remove('on'); action.fn(); };
+    t.appendChild(b);
+  }
+  t.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('on'), action ? 4600 : 2400);
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (tocpanel.classList.contains('open')) toggleToc(false);
+  else if (drawer.classList.contains('open')) closeDrawer();
+  else if (cbox.classList.contains('open')) { closeCbox(); renderBar(); }
+  else if (openId) closeEditor();
+  else if (narOn) setNar(false);
+});
+
+let lastY = 0, ticking = false;
+addEventListener('scroll', () => {
+  if (ticking) return;
+  ticking = true;
+  requestAnimationFrame(() => {
+    const max = document.documentElement.scrollHeight - innerHeight;
+    $('#progress').style.width = (max > 0 ? Math.min(100, (scrollY / max) * 100) : 0) + '%';
+    const bar = $('#topbar');
+    if (scrollY > 90 && scrollY > lastY + 4) bar.classList.add('hidden');
+    else if (scrollY < lastY - 4 || scrollY < 90) bar.classList.remove('hidden');
+    lastY = scrollY;
+    // an empty note is discarded when scrolling far away — unless you
+    // are typing: iOS scrolls the page by itself when the keyboard opens
+    const n = openNote();
+    if (n && !isValid(n) && !cbox.classList.contains('open') &&
+        Math.abs(scrollY - openScrollY) > 140) closeEditor();
+    ticking = false;
+  });
+}, { passive:true });
+
+addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    if (pagedOn()) layoutPages(firstVisibleOffset());
+    repaint();
+  }, 150);
+});
+let resizeTimer = null;
+
+function applySize(){ document.documentElement.dataset.size = String(prefs.size); }
+$('#btn-size').addEventListener('click', () => {
+  const anchor = firstVisibleOffset();
+  prefs.size = (prefs.size + 1) % 3;
+  save(K_PREFS, prefs);
+  applySize();
+  if (pagedOn()) layoutPages(anchor);
+  repaint();
+});
+
+function dismissHint() {
+  const h = $('#fab-hint');
+  if (h) { h.classList.add('gone'); setTimeout(() => h.remove(), 400); }
+  save(K_HINT, true);
+}
+if (load(K_HINT, false)) $('#fab-hint')?.remove();
+else setTimeout(dismissHint, 7000);
+
+/* --- hidden debug: 3 quick taps on the "a" logo --- */
+let dbgEl = null, brandTaps = [];
+function dlog(m) {
+  if (!dbgEl) return;
+  const p = document.createElement('div');
+  p.textContent = m;
+  dbgEl.appendChild(p);
+  while (dbgEl.childNodes.length > 18) dbgEl.firstChild.remove();
+}
+document.querySelector('.brand-badge').addEventListener('click', () => {
+  const now = Date.now();
+  brandTaps = brandTaps.filter(t => now - t < 900);
+  brandTaps.push(now);
+  if (brandTaps.length < 3) return;
+  brandTaps = [];
+  if (dbgEl) { dbgEl.remove(); dbgEl = null; return; }
+  dbgEl = document.createElement('div');
+  dbgEl.id = 'dbg';
+  document.body.appendChild(dbgEl);
+  dlog('debug ON');
+  dlog('ua: ' + navigator.userAgent.slice(-70));
+  dlog('vv:' + !!window.visualViewport + ' scale:' + (window.visualViewport?.scale ?? '-') +
+       ' pe:' + !!window.PointerEvent + ' coarse:' + matchMedia('(pointer: coarse)').matches);
+});
+window.addEventListener('error', (e) => dlog('ERR ' + e.message));
+for (const ev of ['pointerdown','touchstart','pointercancel']) {
+  document.addEventListener(ev, (e) => {
+    if (!dbgEl) return;
+    const el = e.target instanceof Element ? e.target : null;
+    const t = el ? (el.id || (typeof el.className === 'string' && el.className) || el.tagName) : '?';
+    dlog(ev + (e.pointerType ? ':' + e.pointerType : '') + ' @' + String(t).slice(0, 26));
+  }, { capture:true, passive:true });
+}
+
+/* ╔══════════════════════════════════════════════════════════╗
+   ║ 11b · TOC, page mode (epub) and export/import              ║
+   ╚══════════════════════════════════════════════════════════╝ */
+
+/* --- TOC: ## headings and "§ N." section starts --- */
+const tocpanel = $('#tocpanel');
+/* available lectures (to switch documents from the installed app,
+   which has no URL bar) — the catalog is lectures/index.json
+   (public/demo); a gitignored lectures/index.local.json overrides it
+   (personal library). Shared with the service worker precache. */
+let LECTURES = [];
+async function fetchCatalog() {
+  for (const f of ['lectures/index.local.json', 'lectures/index.json']) {
+    try {
+      const r = await fetch(f, { cache: 'no-store' });
+      if (r.ok) return await r.json();
+    } catch {}
+  }
+  return null;
+}
+fetchCatalog().then(d => { if (d?.lectures) LECTURES = d.lectures; });
+function tocEntries() {
+  const out = [];
+  doc.querySelectorAll('h1, h2.blk, p.blk').forEach(el => {
+    const t = el.textContent.trim();
+    if (el.tagName === 'H1') out.push({ el, label: 'Inicio', lvl: 2 });
+    else if (el.tagName === 'H2') out.push({ el, label: t, lvl: 2 });
+    else if (/^§ ?\d+\./.test(t)) out.push({ el, label: t.length > 64 ? t.slice(0, 64).trimEnd() + '…' : t, lvl: 3 });
+  });
+  return out;
+}
+function toggleToc(open = !tocpanel.classList.contains('open')) {
+  if (!open) { tocpanel.classList.remove('open'); return; }
+  tocpanel.innerHTML = '';
+  for (const e of tocEntries()) {
+    const b = document.createElement('button');
+    b.className = 'toc-item' + (e.lvl === 2 ? ' lvl2' : '');
+    b.textContent = e.label;
+    b.onclick = () => { toggleToc(false); gotoElement(e.el); };
+    tocpanel.appendChild(b);
+  }
+  if (!tocpanel.childNodes.length) {
+    const p = document.createElement('div');
+    p.className = 'toc-item';
+    p.textContent = 'Este documento no tiene secciones.';
+    tocpanel.appendChild(p);
+  }
+  if (LECTURES.length > 1) {
+    const h = document.createElement('div');
+    h.className = 'toc-head';
+    h.textContent = 'Lecturas';
+    tocpanel.appendChild(h);
+    for (const L of LECTURES) {
+      if (L.status === 'registrada') continue;   // no text: just a card on the home
+      const b = document.createElement('button');
+      const current = DOC_PARAM === L.slug;
+      b.className = 'toc-item' + (current ? ' lvl2' : '');
+      b.textContent = (current ? '· ' : '') + L.title;
+      b.onclick = () => { if (!current) location.href = './?doc=' + L.slug; };
+      tocpanel.appendChild(b);
+    }
+  }
+  if (bookmarks.length) {
+    const h = document.createElement('div');
+    h.className = 'toc-head';
+    h.textContent = 'Marcadores';
+    tocpanel.appendChild(h);
+    const docText = doc.textContent;
+    for (const bm of [...bookmarks].sort((a, b) => a.off - b.off)) {
+      const row = document.createElement('div');
+      row.className = 'toc-bm';
+      const b = document.createElement('button');
+      b.className = 'toc-item';
+      const snip = docText.slice(bm.off, bm.off + 64).replace(/\s+/g, ' ').trim();
+      b.innerHTML = `<small></small>`;
+      b.querySelector('small').textContent = `${progressPct(bm.off)}% · «${snip}…»`;
+      b.onclick = () => { toggleToc(false); gotoBookmark(bm); };
+      row.appendChild(b);
+      const del = document.createElement('button');
+      del.className = 'bm-del';
+      del.setAttribute('aria-label', 'Quitar marcador');
+      del.innerHTML = TRASH_SVG;
+      del.onclick = (ev) => {
+        ev.stopPropagation();
+        bookmarks = bookmarks.filter(x => x.id !== bm.id);
+        saveBookmarks();
+        toggleToc(true);           // re-render
+      };
+      row.appendChild(del);
+      tocpanel.appendChild(row);
+    }
+  }
+  tocpanel.classList.add('open');
+}
+
+/* --- bookmarks (ribbon): toggle on the current view, like an e-reader --- */
+let bookmarks = [];
+const bmKey = () => `audiolib.reader.v1.bm.${SLUG}`;
+function loadBookmarks() { bookmarks = load(bmKey(), []); }
+function saveBookmarks() { save(bmKey(), bookmarks); updateBmBtn(); }
+function visibleBookmarks() {
+  const out = [];
+  for (const bm of bookmarks) {
+    const r = rangeFromOffsets(bm.off, Math.min(bm.off + 1, doc.textContent.length));
+    const rects = r ? [...r.getClientRects()].filter(x => x.height > 0) : [];
+    if (!rects.length) continue;
+    if (pagedOn()) { if (pageOfRect(rects[0].left) === paged.page) out.push(bm); }
+    else if (rects[0].top >= 56 && rects[0].top <= innerHeight - 40) out.push(bm);
+  }
+  return out;
+}
+function updateBmBtn() {
+  const onIt = visibleBookmarks().length > 0;
+  $('#btn-bm').classList.toggle('on', onIt);
+  $('#btn-bm').title = onIt ? 'Quitar marcador' : 'Marcar esta página';
+}
+function gotoBookmark(bm) {
+  if (pagedOn()) { gotoOffsetPage(bm.off, false); return; }
+  const r = rangeFromOffsets(bm.off, Math.min(bm.off + 1, doc.textContent.length));
+  const rects = r ? [...r.getClientRects()].filter(x => x.height > 0) : [];
+  if (rects.length) scrollTo({ top: scrollY + rects[0].top - 110, behavior: 'smooth' });
+}
+$('#btn-bm').addEventListener('click', (e) => {
+  const vis = visibleBookmarks();
+  if (vis.length) {
+    bookmarks = bookmarks.filter(b => !vis.includes(b));
+    toast('Marcador quitado');
+  } else {
+    let off = firstVisibleOffset();
+    if (off == null) return;
+    off = snapStart(off);              // readable excerpt: from a word start
+    bookmarks.push({ id: uid(), off, when: Date.now() });
+    toast('Marcador agregado');
+  }
+  saveBookmarks();
+  e.currentTarget.blur();
+});
+let bmScrollTimer = null;
+addEventListener('scroll', () => {
+  clearTimeout(bmScrollTimer);
+  bmScrollTimer = setTimeout(updateBmBtn, 150);
+}, { passive: true });
+$('#btn-toc').addEventListener('click', (e) => { e.stopPropagation(); toggleToc(); });
+document.addEventListener('click', (e) => {
+  if (tocpanel.classList.contains('open') &&
+      !(e.target instanceof Element && e.target.closest('#tocpanel, #btn-toc'))) toggleToc(false);
+});
+function gotoElement(el) {
+  if (pagedOn()) {
+    const rc = el.getBoundingClientRect();
+    gotoPage(pageOfRect(rc.left), false);
+  } else {
+    scrollTo({ top: scrollY + el.getBoundingClientRect().top - 90, behavior: 'smooth' });
+  }
+}
+
+/* --- page mode: CSS columns as wide as the view; the DOM doesn't
+   change, so notes, highlights and narration keep working --- */
+const paged = { page: 0, pages: 1, stride: 1, epoch: 0 };
+const pagedOn = () => document.body.classList.contains('paged');
+const PG_GAP = 48, PG_TOP = 72, PG_BOTTOM = 54;
+
+function firstVisibleOffset() {
+  const r = doc.getBoundingClientRect();
+  return pagedOn()
+    ? caretOffsetFromPoint(r.left + 40, r.top + 30)
+    : caretOffsetFromPoint(r.left + r.width / 2, Math.max(r.top + 12, 96));
+}
+function layoutPages(anchorOff = null) {
+  if (!pagedOn()) return;
+  const w = Math.min(680 - 56, innerWidth - 48);
+  // if the document has narration, the bar's space is ALWAYS reserved:
+  // toggling narration on/off never repaginates (stable pages)
+  const h = innerHeight - PG_TOP - PG_BOTTOM - (nar.ready ? 66 : 0);
+  doc.style.width = w + 'px';
+  doc.style.height = h + 'px';
+  doc.style.columnWidth = w + 'px';
+  doc.style.columnGap = PG_GAP + 'px';
+  paged.stride = w + PG_GAP;
+  paged.pages = Math.max(1, Math.round((doc.scrollWidth + PG_GAP) / paged.stride));
+  paged.epoch++;
+  if (anchorOff != null) gotoOffsetPage(anchorOff, false);
+  else gotoPage(Math.min(paged.page, paged.pages - 1), false);
+}
+function gotoPage(i, smooth = true) {
+  i = Math.max(0, Math.min(i, paged.pages - 1));
+  paged.page = i;
+  doc.scrollTo({ left: i * paged.stride, top: 0, behavior: smooth ? 'smooth' : 'auto' });
+  $('#pg-num').textContent = `${i + 1} / ${paged.pages}`;
+  $('#progress').style.width = (paged.pages > 1 ? (i / (paged.pages - 1)) * 100 : 100) + '%';
+  progressSoon();
+  updateBmBtn();
+  renderPgx();             // the arrows' visibility depends on the current page
+}
+function pageOfRect(clientLeft) {
+  // floor, not round: a point mid-line belongs to ITS column;
+  // with round, anything past 50% of the width "fell" onto the next page
+  return Math.floor((clientLeft - doc.getBoundingClientRect().left + doc.scrollLeft) / paged.stride);
+}
+function gotoOffsetPage(off, smooth = true) {
+  if (off == null) return;
+  const r = rangeFromOffsets(off, Math.min(off + 1, doc.textContent.length));
+  const rects = r ? [...r.getClientRects()].filter(x => x.width || x.height) : [];
+  if (rects.length) gotoPage(pageOfRect(rects[0].left), smooth);
+}
+function setPaged(on) {
+  const anchor = firstVisibleOffset();
+  document.body.classList.toggle('paged', on);
+  $('#btn-paged').setAttribute('aria-pressed', String(on));
+  $('#pageinfo').hidden = !on;
+  prefs.paged = on; save(K_PREFS, prefs);
+  if (on) layoutPages(anchor);
+  else {
+    doc.style.width = doc.style.height = doc.style.columnWidth = doc.style.columnGap = '';
+    doc.scrollLeft = 0;
+    const r = anchor != null ? rangeFromOffsets(anchor, anchor + 1) : null;
+    const rects = r ? [...r.getClientRects()].filter(x => x.height > 0) : [];
+    if (rects.length) scrollTo({ top: scrollY + rects[0].top - 100 });
+  }
+  repaint();
+}
+$('#btn-paged').addEventListener('click', (e) => { setPaged(!pagedOn()); e.currentTarget.blur(); });
+/* manual paging must not fight the narration follow-scroll */
+const muteFollow = () => { nar.followMuteUntil = Date.now() + 4000; nar.follow = false; };
+$('#pg-prev').addEventListener('click', (e) => { muteFollow(); gotoPage(paged.page - 1); e.currentTarget.blur(); });
+$('#pg-next').addEventListener('click', (e) => { muteFollow(); gotoPage(paged.page + 1); e.currentTarget.blur(); });
+
+/* page turning: arrow keys (when narration isn't using them), wheel and swipe */
+document.addEventListener('keydown', (e) => {
+  if (!pagedOn() || narOn) return;
+  const el = e.target instanceof Element ? e.target : null;
+  if (el && el.closest('textarea, input, [contenteditable]')) return;
+  if (e.key === 'ArrowRight') { e.preventDefault(); muteFollow(); gotoPage(paged.page + 1); }
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); muteFollow(); gotoPage(paged.page - 1); }
+});
+let wheelAcc = 0, wheelTs = 0;
+addEventListener('wheel', (e) => {
+  if (!pagedOn()) return;
+  if (e.target instanceof Element && e.target.closest('#drawer, #cbox, #tocpanel, #narbar')) return;
+  e.preventDefault();
+  const now = Date.now();
+  if (now - wheelTs > 250) wheelAcc = 0;
+  wheelTs = now;
+  wheelAcc += (Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY);
+  if (Math.abs(wheelAcc) > 60) { muteFollow(); gotoPage(paged.page + (wheelAcc > 0 ? 1 : -1)); wheelAcc = 0; }
+}, { passive: false });
+let swipe = null;
+doc.addEventListener('touchstart', (e) => {
+  swipe = null;
+  if (!pagedOn() || !e.touches[0]) return;
+  // a drag starting on a handle or note is editing, never a swipe
+  const t = e.target instanceof Element ? e.target : null;
+  if (t && t.closest('.hand, .gdot, .pgx, mark.hl, #minibar, #cbox')) return;
+  swipe = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+}, { passive: true });
+doc.addEventListener('touchend', (e) => {
+  if (!swipe) return;
+  const t = e.changedTouches[0], dx = t.clientX - swipe.x, dy = t.clientY - swipe.y;
+  swipe = null;
+  if (dragHand || dragDot) return;             // a note was being stretched
+  const sel = getSelection();
+  if (sel && !sel.isCollapsed) return;
+  if (Math.abs(dx) > 55 && Math.abs(dy) < 70) { muteFollow(); gotoPage(paged.page + (dx < 0 ? 1 : -1)); }
+}, { passive: true });
+
+/* --- AI export: excerpt + context paragraph + comment --- */
+function blockTextAt(off) {
+  const r = rangeFromOffsets(off, Math.min(off + 1, doc.textContent.length));
+  let el = r && r.startContainer;
+  if (el && el.nodeType === Node.TEXT_NODE) el = el.parentElement;
+  const blk = el instanceof Element ? el.closest('.blk, h1, h2, blockquote') : null;
+  return blk ? blk.textContent.trim() : '';
+}
+function buildAiExport() {
+  const valid = notes.filter(isValid).sort((a, b) => notePos(a) - notePos(b));
+  const title = doc.querySelector('h1')?.textContent || SLUG;
+  const by = doc.querySelector('.doc-byline')?.textContent.replace(/\s+/g, ' ').trim() || '';
+  const L = [`# Notas de lectura · ${title}`, by, '', `${valid.length} notas sobre el documento «${SLUG}».`, ''];
+  valid.forEach((n, i) => {
+    L.push(`---`, `## Nota ${i + 1}${n.tag ? ` · ${TAGS[n.tag].label}` : ''}`);
+    if (hasFrag(n)) {
+      L.push(`**Extracto marcado:** «${n.exact}»`);
+      const ctx = blockTextAt(n.start);
+      if (ctx && ctx !== n.exact) L.push('', `**Párrafo de contexto:** ${ctx}`);
+    } else if (n.anchorOffset != null) {
+      const ctx = blockTextAt(n.anchorOffset);
+      if (ctx) L.push(`**Nota al margen del párrafo:** ${ctx}`);
+    }
+    if (n.comment.trim()) L.push('', `**Mi comentario/pregunta:** ${n.comment.trim()}`);
+    L.push('');
+  });
+  L.push('---', '',
+    'Actuá como tutor de este texto: explicá cada extracto marcado en su contexto, ' +
+    'respondé las preguntas de mis comentarios y proponeme repreguntas para fijar los conceptos.');
+  return L.join('\n');
+}
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch {}
+  try {
+    const ta = document.createElement('textarea');   // fallback for HTTP without the clipboard API
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove(); return ok;
+  } catch { return false; }
+}
+$('#exp-ai').addEventListener('click', async () => {
+  if (!notes.filter(isValid).length) { toast('No hay notas para exportar'); return; }
+  const md = buildAiExport();
+  if (navigator.share && matchMedia('(pointer: coarse)').matches) {
+    try { await navigator.share({ title: 'Notas de lectura', text: md }); return; } catch {}
+  }
+  toast(await copyText(md) ? 'Notas copiadas — pegalas en tu IA' : 'No pude copiar');
+});
+
+/* --- export / import to read from another device --- */
+$('#exp-json').addEventListener('click', () => {
+  const data = {
+    schema: 'audiolib/reader-export@1',
+    slug: SLUG,
+    exported: new Date().toISOString(),
+    notes: notes.filter(isValid),
+    bookmarks,
+    pos: load(posKey(), null),
+  };
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+  a.download = `${SLUG.replace(/[^a-z0-9-]/gi, '_')}-notas.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+});
+$('#imp-json').addEventListener('click', () => $('#imp-file').click());
+$('#imp-file').addEventListener('change', async (e) => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  let data;
+  try { data = JSON.parse(await f.text()); } catch { toast('Archivo inválido'); return; }
+  if (data.schema !== 'audiolib/reader-export@1' || !Array.isArray(data.notes)) { toast('Archivo inválido'); return; }
+  if (data.slug !== SLUG && !confirm(`Estas notas son de «${data.slug}» y este documento es «${SLUG}». ¿Importar igual?`)) return;
+  const byId = new Map(notes.map(n => [n.id, n]));
+  let added = 0, updated = 0;
+  for (const raw of data.notes) {
+    // imported notes are untrusted (a shared export): a bad tag/side/id
+    // used to break every later repaint, and a "]-quote in id breaks the
+    // querySelectors. Sanitize into the shapes the rest of the code assumes.
+    if (!raw || typeof raw.id !== 'string' || !/^[\w-]+$/.test(raw.id)) continue;
+    const inc = { ...raw };
+    delete inc.__proto__;                                    // Object.assign runs the setter otherwise
+    if (typeof inc.comment !== 'string') delete inc.comment;
+    if (inc.tag != null && !TAGS[inc.tag]) inc.tag = null;
+    if (inc.side !== 'right') delete inc.side;               // default 'left'
+    if (byId.has(inc.id)) { Object.assign(byId.get(inc.id), inc); updated++; }
+    else { notes.push({ comment: '', tag: null, side: 'left', ...inc }); added++; }
+  }
+  let bmAdded = 0;
+  if (Array.isArray(data.bookmarks)) {
+    const bmIds = new Set(bookmarks.map(b => b.id));
+    for (const b of data.bookmarks) {
+      if (b && b.id && !bmIds.has(b.id)) { bookmarks.push(b); bmAdded++; }
+    }
+    if (bmAdded) saveBookmarks();
+  }
+  if (data.pos && !load(posKey(), null)) save(posKey(), data.pos);
+  persist(); repaint(); renderDrawer(); updateBmBtn();
+  toast(`Importadas: ${added} nuevas · ${updated} actualizadas` + (bmAdded ? ` · ${bmAdded} marcadores` : ''));
+});
+
+/* ╔══════════════════════════════════════════════════════════╗
+   ║ 12 · Narration mode                                        ║
+   ║   One continuous mp3 + timeline.json (turns → sentences    ║
+   ║   with ms offsets). Sentences map to document offsets      ║
+   ║   and get highlighted via the CSS Custom Highlight API     ║
+   ║   (no DOM changes: coexists with the note <mark>s).        ║
+   ╚══════════════════════════════════════════════════════════╝ */
+let narOn = false;
+const nar = {
+  ready:false, tl:null, audio:null, sents:[], active:-1, hover:-1,
+  followMuteUntil:0, follow:true, rates:[1, 1.25, 1.5], rateIdx:0, raf:null,
+};
+const nfab = $('#nfab');
+const narbar = $('#narbar');
+const HL = ('highlights' in CSS) ? { active:new Highlight(), hover:new Highlight() } : null;
+if (HL) {
+  CSS.highlights.set('nar-active', HL.active);
+  CSS.highlights.set('nar-hover', HL.hover);
+}
+const fmtTime = (ms) => {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+};
+const fmtRate = (r) => String(r).replace('.', ',') + '×';
+
+async function initNarration(docParam, fileName) {
+  if (!docParam) return;
+  let tl = null;
+  try {
+    const res = await fetch(`lectures/${docParam}/timeline.json`, { cache:'no-store' });
+    if (res.ok) tl = await res.json();
+  } catch {}
+  if (!tl || !tl.turns || tl.source !== fileName) return;   // narration for another variant
+  // resolve the audio source: heavy mp3s are build artifacts that may not
+  // ship with the repo — local file first, then the catalog's audioUrl
+  // (e.g. a GitHub Release asset); with neither, no narration is offered
+  let audioSrc = `lectures/${docParam}/${tl.audio}`;
+  try {
+    const head = await fetch(audioSrc, { method: 'HEAD' });
+    if (!head.ok) throw 0;
+  } catch {
+    const cat = await fetchCatalog();
+    const remote = cat?.lectures?.find(L => L.slug === docParam)?.audioUrl;
+    // a remote audioUrl (from an untrusted pack) must be plain https, so a
+    // pack can't beacon readers over an odd scheme or leak more than the fetch
+    let ok = false;
+    try { ok = !!remote && new URL(remote).protocol === 'https:'; } catch {}
+    if (!ok) { dlog('nar: audio ausente/ inválido'); return; }
+    audioSrc = remote;
+  }
+  nar.tl = tl;
+  // map each timeline sentence to doc.textContent offsets;
+  // the cursor advances to tolerate repeated text
+  const docText = doc.textContent;
+  let cursor = 0;
+  for (const t of tl.turns) for (const s of t.sentences) {
+    const i = docText.indexOf(s.text, cursor);
+    if (i >= 0) { s.start = i; s.end = i + s.text.length; cursor = s.end; }
+    else { s.start = s.end = -1; dlog('nar: oración sin mapear'); }
+    nar.sents.push(s);
+  }
+  const a = new Audio(audioSrc);
+  a.preload = 'metadata';
+  a.addEventListener('error', () => {           // unreachable/broken mp3:
+    if (nar.audio !== a) return;                // withdraw the dead player
+    narbar.classList.remove('playing'); stopLoop();
+    setNar(false);
+    nar.ready = false; nfab.hidden = true;
+    toast('No se pudo cargar la narración');
+  });
+  let lastProgSave = 0;
+  a.addEventListener('timeupdate', () => {       // audio progress, every ~5 s
+    if (!a.paused && Date.now() - lastProgSave > 5000) { lastProgSave = Date.now(); saveProgress(); }
+  });
+  a.addEventListener('play',  () => {
+    narbar.classList.add('playing');
+    nar.follow = true;
+    revealActive();      // if you navigated far while paused, play brings you back to the sentence
+    narLoop();
+  });
+  a.addEventListener('pause', () => { narbar.classList.remove('playing'); stopLoop(); narTick(); });
+  a.addEventListener('ended', () => { narbar.classList.remove('playing'); stopLoop(); setActiveSent(-1); });
+  nar.audio = a;
+  nar.rateIdx = Math.max(0, nar.rates.indexOf(prefs.rate ?? 1));
+  a.playbackRate = nar.rates[nar.rateIdx];
+  $('#nb-rate').textContent = fmtRate(nar.rates[nar.rateIdx]);
+  $('#nb-total').textContent = fmtTime(tl.total_ms);
+  nar.ready = true;
+  nfab.hidden = false;
+  if (pagedOn()) layoutPages(firstVisibleOffset());
+}
+
+function setNar(on) {
+  if (!nar.ready) return;
+  narOn = on;
+  nfab.classList.toggle('on', on);
+  nfab.setAttribute('aria-pressed', String(on));
+  nfab.dataset.tip = on ? 'Salir de narración' : 'Modo narración';
+  document.body.classList.toggle('nar-on', on);
+  doc.classList.toggle('nar', on);
+  narbar.classList.toggle('on', on);
+  if (on) {
+    $('#modechip-txt').textContent = 'Modo narración · tocá una oración para escucharla desde ahí';
+    $('#modechip').classList.add('on');
+    narTick();
+    refreshNar();     // narTick doesn't repaint if the active sentence didn't change
+  } else {
+    nar.audio.pause();                       // on return: play to resume
+    $('#modechip').classList.remove('on');
+    setHoverSent(-1);
+    refreshNar();
+  }
+}
+nfab.addEventListener('click', () => { setNar(!narOn); nfab.blur(); });
+
+/* --- highlights --- */
+function sentRange(s) {
+  return (s && s.start >= 0) ? rangeFromOffsets(s.start, s.end) : null;
+}
+function setActiveSent(idx) {
+  if (idx === nar.active) return;
+  nar.active = idx;
+  refreshNar();
+}
+function setHoverSent(idx) {
+  if (idx === nar.hover) return;
+  nar.hover = idx;
+  if (!HL) return;
+  HL.hover.clear();
+  if (narOn && idx >= 0 && idx !== nar.active) {
+    const r = sentRange(nar.sents[idx]);
+    if (r) HL.hover.add(r);
+  }
+}
+function refreshNar() {
+  if (!HL || !nar.ready) return;
+  HL.active.clear();
+  if (narOn && nar.active >= 0) {
+    const r = sentRange(nar.sents[nar.active]);
+    if (r) HL.active.add(r);
+  }
+}
+
+/* --- time → sentence: the last one whose start_ms <= ms --- */
+function sentAtTime(ms) {
+  const arr = nar.sents;
+  let lo = 0, hi = arr.length - 1, ans = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (arr[mid].start_ms <= ms) { ans = mid; lo = mid + 1; } else hi = mid - 1;
+  }
+  return ans;
+}
+function narTick() {
+  if (!nar.audio) return;
+  const ms = nar.audio.currentTime * 1000;
+  $('#nb-cur').textContent = fmtTime(ms);
+  $('#nb-fill').style.width = (nar.tl.total_ms ? Math.min(100, ms / nar.tl.total_ms * 100) : 0) + '%';
+  setActiveSent(sentAtTime(ms));
+  autoFollow();
+}
+function narLoop() {
+  stopLoop();
+  const step = () => { narTick(); nar.raf = requestAnimationFrame(step); };
+  nar.raf = requestAnimationFrame(step);
+}
+function stopLoop() {
+  if (nar.raf) { cancelAnimationFrame(nar.raf); nar.raf = null; }
+}
+
+/* --- autoscroll that follows the reading; off for 4 s if the user scrolls --- */
+/* brings the view to the active sentence (on play after navigating far) */
+function revealActive() {
+  const r = sentRange(nar.sents[nar.active]);
+  if (!r) return;
+  const rects = [...r.getClientRects()].filter(x => x.height > 0);
+  if (!rects.length) return;
+  if (pagedOn()) {
+    const pg = pageOfRect(rects[0].left);
+    if (pg !== paged.page) gotoPage(pg, false);
+  } else if (rects[0].top < 70 || rects[0].top > innerHeight - 160) {
+    scrollTo({ top: scrollY + rects[0].top - innerHeight * 0.32 });
+  }
+}
+/* A sentence crossing pages has no per-word timestamps: time is
+   interpolated by character position to turn the page exactly when
+   the audio enters the following part. */
+function pageOfChar(i) {
+  const r = rangeFromOffsets(i, Math.min(i + 1, doc.textContent.length));
+  const rects = r ? [...r.getClientRects()].filter(x => x.width || x.height) : [];
+  return rects.length ? pageOfRect(rects[0].left) : -1;
+}
+function sentBreaks(s) {
+  if (s._epoch === paged.epoch) return s._breaks;
+  const breaks = [];
+  let curPage = pageOfChar(s.start), from = s.start;
+  for (let guard = 0; guard < 6; guard++) {
+    let lo = from, hi = s.end - 1, found = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      (pageOfChar(mid) > curPage) ? (found = mid, hi = mid - 1) : (lo = mid + 1);
+    }
+    if (found < 0) break;
+    curPage = pageOfChar(found);
+    const frac = (found - s.start) / Math.max(1, s.end - s.start);
+    breaks.push({ page: curPage, t: s.start_ms + frac * (s.end_ms - s.start_ms) });
+    from = found;
+  }
+  s._breaks = breaks;
+  s._epoch = paged.epoch;
+  return breaks;
+}
+function autoFollow() {
+  if (!narOn || nar.audio.paused || openId || Date.now() < nar.followMuteUntil) return;
+  const s = nar.sents[nar.active];
+  const r = sentRange(s);
+  if (!r) return;
+  const rects = [...r.getClientRects()].filter(x => x.height > 0);
+  if (!rects.length) return;
+  if (pagedOn()) {
+    const pgFirst = pageOfRect(rects[0].left);
+    const pgLast = pageOfRect(rects[rects.length - 1].left);
+    let target = pgFirst;
+    if (pgLast > pgFirst) {                   // split sentence: follow the playhead
+      const ms = nar.audio.currentTime * 1000;
+      for (const b of sentBreaks(s)) if (ms >= b.t) target = b.page;
+    }
+    if (paged.page === target) { nar.follow = true; return; }
+    // if the user navigated far we don't chase them; following re-arms
+    // on returning to the audio's page, tapping a sentence, or play
+    if (!nar.follow) return;
+    nar.followMuteUntil = Date.now() + 500;
+    gotoPage(target);
+    return;
+  }
+  const top = rects[0].top, bottom = rects[rects.length - 1].bottom;
+  const visible = top >= 60 && bottom <= innerHeight - 80;
+  if (visible) { nar.follow = true; return; }
+  if (!nar.follow) return;
+  if (top < 76 || bottom > innerHeight - 150) {
+    nar.followMuteUntil = Date.now() + 900;   // don't re-enter during the smooth scroll
+    scrollTo({ top: scrollY + top - innerHeight * 0.32, behavior:'smooth' });
+  }
+}
+for (const ev of ['wheel', 'touchmove']) {
+  addEventListener(ev, () => {
+    if (!narOn) return;
+    nar.followMuteUntil = Date.now() + 4000;
+    nar.follow = false;        // navigating turns following off; it re-arms on return or play
+    setHoverSent(-1);
+  }, { passive:true });
+}
+addEventListener('scroll', () => { if (narOn) setHoverSent(-1); }, { passive:true });
+/* when leaving the window, #doc's mouseleave may not fire */
+document.addEventListener('mouseout', (e) => {
+  if (narOn && !e.relatedTarget) setHoverSent(-1);
+});
+
+/* --- click on a sentence = play from there --- */
+function sentAtOffset(off) {
+  if (off == null) return -1;
+  const arr = nar.sents;
+  let lo = 0, hi = arr.length - 1, ans = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (arr[mid].start <= off) { ans = mid; lo = mid + 1; } else hi = mid - 1;
+  }
+  if (ans >= 0 && off <= arr[ans].end + 1) return ans;
+  return (ans + 1 < arr.length) ? ans + 1 : -1;   // click in a gap: the next one
+}
+/* robust seek: before the metadata loads, assigning currentTime gets
+   lost and the audio starts from zero — deferred to loadedmetadata */
+function narSeek(sec, andPlay) {
+  const a = nar.audio;
+  const go = () => {
+    a.currentTime = sec;
+    if (andPlay) a.play();
+    narTick();
+  };
+  if (a.readyState >= 1) go();
+  else { a.addEventListener('loadedmetadata', go, { once:true }); a.load(); }
+}
+let narSeekTimer = null;
+doc.addEventListener('click', (e) => {
+  if (!narOn || openId) return;                    // with a note open there is no navigation
+  const el = e.target instanceof Element ? e.target : null;
+  if (el && el.closest('.gdot, .hand, .pgx, #minibar, #cbox, mark.hl')) return;
+  const sel = getSelection();
+  if (sel && !sel.isCollapsed) return;             // text was being selected
+  if (tapDown && Math.hypot(e.clientX - tapDown.x, e.clientY - tapDown.y) > 12) return;
+  const idx = sentAtOffset(caretOffsetFromPoint(e.clientX, e.clientY));
+  if (idx < 0) return;
+  // deferred: the first click of a double click must NOT seek
+  clearTimeout(narSeekTimer);
+  narSeekTimer = setTimeout(() => {
+    nar.follow = true;
+    setActiveSent(idx);
+    // moves the marker; keeps sounding only if it was ALREADY sounding —
+    // while paused, the marker moves and playing is left to the play button
+    narSeek(nar.sents[idx].start_ms / 1000 + 0.001, !nar.audio.paused);
+  }, 360);
+});
+/* hover with the same geometry as the click (fine pointer only) */
+let hoverPending = false;
+doc.addEventListener('mousemove', (e) => {
+  if (!narOn || openId || hoverPending || matchMedia('(pointer: coarse)').matches) return;
+  hoverPending = true;
+  setTimeout(() => {
+    hoverPending = false;
+    if (!narOn) return;
+    setHoverSent(sentAtOffset(caretOffsetFromPoint(e.clientX, e.clientY)));
+  }, 80);
+});
+doc.addEventListener('mouseleave', () => setHoverSent(-1));
+
+/* --- keyboard in narration mode: space = play/pause, ← → = by sentence --- */
+function narStep(idx) {
+  if (idx < 0 || idx >= nar.sents.length) return;
+  nar.follow = true;
+  setActiveSent(idx);
+  narSeek(nar.sents[idx].start_ms / 1000 + 0.001, !nar.audio.paused);
+}
+function narNext() {
+  narStep(Math.min(nar.sents.length - 1, Math.max(0, nar.active + 1)));
+}
+function narPrev() {
+  const cur = Math.max(0, nar.active);
+  const intoSent = nar.audio.currentTime * 1000 - nar.sents[cur].start_ms;
+  narStep(intoSent > 1500 ? cur : Math.max(0, cur - 1));     // 1st press: restarts the sentence
+}
+document.addEventListener('keydown', (e) => {
+  if (!narOn || !nar.ready) return;
+  const el = e.target instanceof Element ? e.target : null;
+  if (el && el.closest('textarea, input, [contenteditable]')) return;
+  if (e.key === ' ') {
+    if (el && el.closest('button')) return;        // the focused button already handles space
+    e.preventDefault();
+    if (nar.audio.paused) nar.audio.play(); else nar.audio.pause();
+  } else if (e.key === 'ArrowRight') {
+    e.preventDefault();
+    narNext();
+  } else if (e.key === 'ArrowLeft') {
+    e.preventDefault();
+    narPrev();
+  }
+});
+$('#nb-prev').addEventListener('click', (e) => { narPrev(); e.currentTarget.blur(); });
+$('#nb-next').addEventListener('click', (e) => { narNext(); e.currentTarget.blur(); });
+
+/* --- automatic progress ---
+   Progress is state, not an action: it saves itself (settled scroll,
+   page change, audio playing and when the tab hides) and on open it
+   resumes silently, with "Ir al inicio" as the escape hatch. Reading
+   and audio are saved separately: they can diverge. */
+const posKey = () => `audiolib.reader.v1.pos.${SLUG}`;
+const progressPct = (off) => Math.min(100, Math.round((off / Math.max(1, doc.textContent.length)) * 100));
+let progressTimer = null, restoring = true;
+function saveProgress() {
+  if (restoring) return;                 // don't clobber progress before restoring it
+  const off = firstVisibleOffset();
+  if (off == null) return;
+  const p = load(posKey(), null) || {};
+  p.off = off; p.y = scrollY; p.when = Date.now();
+  p.pct = progressPct(off);
+  if (nar.ready) { p.t = nar.audio.currentTime; p.nar = narOn; }
+  save(posKey(), p);
+}
+function progressSoon() { clearTimeout(progressTimer); progressTimer = setTimeout(saveProgress, 1500); }
+addEventListener('scroll', () => { if (!pagedOn()) progressSoon(); }, { passive: true });
+addEventListener('pagehide', saveProgress);
+document.addEventListener('visibilitychange', () => { if (document.hidden) saveProgress(); });
+
+function restoreProgress() {
+  const p = load(posKey(), null);
+  restoring = false;
+  if (!p || (p.off == null && !p.y && p.t == null)) return;
+  if (p.off != null) {
+    if (pagedOn()) gotoOffsetPage(p.off, false);
+    else {
+      const r = rangeFromOffsets(p.off, Math.min(p.off + 1, doc.textContent.length));
+      const rects = r ? [...r.getClientRects()].filter(x => x.height > 0) : [];
+      if (rects.length) scrollTo({ top: scrollY + rects[0].top - 110 });
+      else if (p.y) scrollTo({ top: p.y });
+    }
+  } else if (p.y) scrollTo({ top: p.y });
+  if (p.t != null && nar.ready) {
+    narSeek(p.t, false);
+    if (p.nar) setNar(true);             // comes back paused: play to resume
+  }
+  if (p.off != null && progressPct(p.off) > 0) {
+    toast(`Retomando donde quedaste · ${progressPct(p.off)}%`, { label: 'Ir al inicio', fn() {
+      if (pagedOn()) gotoPage(0, false); else scrollTo({ top: 0 });
+      progressSoon();
+    }});
+  }
+}
+
+/* --- bar: play / seek / speed --- */
+$('#nb-play').addEventListener('click', (e) => {
+  if (!nar.audio) return;
+  if (nar.audio.paused) nar.audio.play(); else nar.audio.pause();
+  e.currentTarget.blur();
+});
+$('#nb-rate').addEventListener('click', (e) => {
+  nar.rateIdx = (nar.rateIdx + 1) % nar.rates.length;
+  const r = nar.rates[nar.rateIdx];
+  nar.audio.playbackRate = r;
+  $('#nb-rate').textContent = fmtRate(r);
+  prefs.rate = r; save(K_PREFS, prefs);
+  e.currentTarget.blur();
+});
+{
+  const track = $('#nb-track');
+  const seekTo = (x) => {
+    const rc = track.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (x - rc.left) / rc.width));
+    narSeek(ratio * nar.tl.total_ms / 1000, false);
+  };
+  let seeking = false;
+  track.addEventListener('pointerdown', (e) => {
+    if (!nar.ready) return;
+    seeking = true;
+    track.setPointerCapture?.(e.pointerId);
+    seekTo(e.clientX);
+  });
+  track.addEventListener('pointermove', (e) => { if (seeking) seekTo(e.clientX); });
+  track.addEventListener('pointerup', () => { seeking = false; });
+}
+
+/* ╔══════════════════════════════════════════════════════════╗
+   ║ 12b · Library (home)                                       ║
+   ╚══════════════════════════════════════════════════════════╝ */
+const HP_SVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>';
+/* library filters: by tags + status, synced with the URL
+   (./?materia=…&unidad=U1) so a filtered view can be linked */
+const FILTER_KEYS = [['materia', 'Materia'], ['unidad', 'Unidad'], ['autor', 'Autor'], ['estado', 'Estado']];
+const ST_LABEL = { registrada: 'pendiente', transcripta: 'transcript', curada: '' };
+const ST_FILTER = { registrada: 'pendiente', transcripta: 'transcript', curada: 'lista' };
+let fOpenKey = null;                       // expanded value row
+function tagOf(L, key) {
+  if (key === 'estado') return ST_FILTER[L.status] || 'lista';
+  return L.tags?.[key] || (key === 'materia' ? (L.estante || 'Lecturas') : null);
+}
+function homeFilters() {
+  const p = new URLSearchParams(location.search);
+  const f = {};
+  for (const [k] of FILTER_KEYS) if (p.get(k)) f[k] = p.get(k);
+  return f;
+}
+function setHomeFilter(key, value) {
+  const p = new URLSearchParams(location.search);
+  if (value == null) p.delete(key); else p.set(key, value);
+  history.replaceState(null, '', './' + (p.size ? '?' + p.toString() : ''));
+  renderHome();
+}
+function openFicha(L) {
+  const old = $('#ficha'); if (old) old.remove();
+  const ov = document.createElement('div');
+  ov.id = 'ficha';
+  const card = document.createElement('div');
+  card.className = 'ficha-card';
+  const h = document.createElement('h3');
+  h.textContent = L.title;
+  const tags = document.createElement('div');
+  tags.className = 'ficha-tags';
+  const st = document.createElement('span');
+  st.textContent = L.status === 'registrada' ? 'pendiente de procesar' : L.status;
+  tags.appendChild(st);
+  for (const [k, v] of Object.entries(L.tags || {})) {
+    const s = document.createElement('span');
+    s.textContent = k === 'materia' ? v : `${k}: ${v}`;
+    tags.appendChild(s);
+  }
+  card.append(h, tags);
+  const revs = L.revisiones || [];
+  if (revs.length) {
+    const ul = document.createElement('ul');
+    ul.className = 'ficha-revs';
+    for (const r of revs) {
+      const li = document.createElement('li');
+      li.innerHTML = '<small></small>';
+      li.querySelector('small').textContent = r.fecha || '';
+      li.appendChild(document.createTextNode(r.nota || ''));
+      ul.appendChild(li);
+    }
+    card.appendChild(ul);
+  } else {
+    const p = document.createElement('p');
+    p.className = 'ficha-empty';
+    p.textContent = 'Todavía no hay texto procesado para esta lecture.';
+    card.appendChild(p);
+  }
+  if (L.source) {
+    const a = document.createElement('a');
+    a.className = 'ficha-close';
+    a.style.display = 'block'; a.style.textAlign = 'center'; a.style.textDecoration = 'none';
+    a.href = `lectures/${L.slug}/${L.source}`;
+    a.target = '_blank';
+    a.textContent = 'Abrir el documento original';
+    card.appendChild(a);
+  }
+  const close = document.createElement('button');
+  close.className = 'ficha-close';
+  close.textContent = 'Cerrar';
+  close.onclick = () => ov.remove();
+  card.appendChild(close);
+  ov.appendChild(card);
+  ov.addEventListener('click', (e) => { if (e.target === ov) ov.remove(); });
+  document.body.appendChild(ov);
+}
+async function renderHome() {
+  document.body.classList.add('home');
+  document.title = 'escolib · biblioteca';
+  const wrap = $('#home');
+  wrap.hidden = false;
+  const data = await fetchCatalog();
+  const lects = data?.lectures || [];
+  const filters = homeFilters();
+  const match = (L) => Object.entries(filters).every(([k, v]) => tagOf(L, k) === v);
+  const shown = lects.filter(match);
+  /* grouping: by subject; within a filtered subject, by class
+     (if the subject is organized in classes) or by unit */
+  let groupBy = 'materia';
+  if (filters.materia) {
+    groupBy = shown.some(L => L.tags?.clase) ? 'clase' : 'unidad';
+  }
+  const shelves = new Map();
+  for (const L of shown) {
+    const raw = groupBy === 'clase' ? (L.tags?.clase ?? null) : tagOf(L, groupBy);
+    const k = raw == null ? 'Otras' : (groupBy === 'clase' ? `Clase ${raw}` : raw);
+    if (!shelves.has(k)) shelves.set(k, []);
+    shelves.get(k).push(L);
+  }
+  const names = [...shelves.keys()];
+  if (groupBy !== 'materia') names.sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
+  wrap.innerHTML = '';
+  const h1 = document.createElement('h1');
+  h1.className = 'home-title';
+  h1.textContent = 'Biblioteca';
+  const sub = document.createElement('p');
+  sub.className = 'home-sub';
+  const legibles = shown.filter(L => L.status !== 'registrada');
+  const totalMin = Math.round(legibles.reduce((a, L) => a + (L.words || 0), 0) / 210);
+  sub.textContent = `${shown.length} lecturas · ${legibles.length} para leer (≈ ${totalMin} min) · ${shown.length - legibles.length} pendientes`;
+  const ctl = document.createElement('div');
+  ctl.className = 'home-controls';
+  for (const [key, label] of FILTER_KEYS) {
+    const activeVal = filters[key];
+    const b = document.createElement('button');
+    b.className = 'gchip' + (activeVal ? ' on' : '');
+    b.textContent = activeVal ? `${label}: ${activeVal} ×` : label;
+    b.onclick = () => {
+      if (activeVal) { fOpenKey = null; setHomeFilter(key, null); }
+      else { fOpenKey = fOpenKey === key ? null : key; renderHome(); }
+    };
+    ctl.appendChild(b);
+  }
+  wrap.append(h1, sub, ctl);
+  if (fOpenKey && !filters[fOpenKey]) {
+    /* possible values for the open filter, honoring the other filters */
+    const others = lects.filter(L => Object.entries(filters)
+      .every(([k, v]) => k === fOpenKey || tagOf(L, k) === v));
+    const counts = new Map();
+    for (const L of others) {
+      const v = tagOf(L, fOpenKey);
+      if (v != null) counts.set(v, (counts.get(v) || 0) + 1);
+    }
+    const vals = [...counts.keys()].sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
+    const row = document.createElement('div');
+    row.className = 'home-controls';
+    for (const v of vals) {
+      const b = document.createElement('button');
+      b.className = 'gchip';
+      b.textContent = `${v} (${counts.get(v)})`;
+      b.onclick = () => { const k = fOpenKey; fOpenKey = null; setHomeFilter(k, v); };
+      row.appendChild(b);
+    }
+    wrap.appendChild(row);
+  }
+  for (const name of names) {
+    const arr = shelves.get(name);
+    const st = document.createElement('div');
+    st.className = 'shelf-title';
+    st.innerHTML = `<span></span><small>${arr.length}</small>`;
+    st.querySelector('span').textContent = name;
+    wrap.appendChild(st);
+    const grid = document.createElement('div');
+    grid.className = 'shelf-grid';
+    for (const L of arr) {
+      const reg = L.status === 'registrada';
+      const card = document.createElement('a');
+      card.className = 'lect-card' + (reg ? ' is-reg' : '');
+      if (reg && L.source) {
+        // pending with an original document: open the PDF/file in another tab
+        card.href = `lectures/${encodeURIComponent(L.slug)}/${encodeURIComponent(L.source)}`;
+        card.target = '_blank';
+        card.rel = 'noopener';
+      } else if (reg) {
+        card.href = '#';
+        card.addEventListener('click', (e) => { e.preventDefault(); openFicha(L); });
+      } else {
+        card.href = './?doc=' + encodeURIComponent(L.slug);
+      }
+      const parts = L.title.split(' · ');
+      const author = parts.length > 1 ? parts[0] : '';
+      const title = parts.length > 1 ? parts.slice(1).join(' · ') : L.title;
+      const pos = load(`audiolib.reader.v1.pos.${L.slug}:curated`, null)
+               || load(`audiolib.reader.v1.pos.${L.slug}`, null);
+      const notes = (load(`audiolib.reader.v1.notes.${L.slug}:curated`, []) || [])
+        .filter(n => n.exact != null || (n.comment || '').trim()).length;
+      const pct = pos?.pct ?? null;
+      const min = L.words ? Math.max(1, Math.round(L.words / 210)) : null;
+      const meta = [];   // catalog strings are attacker-controlled (packs): escape them
+      if (L.status && L.status !== 'curada')
+        meta.push(`<span class="st-chip">${escapeHtml(ST_LABEL[L.status] || L.status)}</span>`);
+      if (reg && L.source)
+        meta.push(`<span class="st-chip src">${escapeHtml(String(L.source).split('.').pop())}</span>`);
+      const ub = L.tags?.clase ? `Clase ${L.tags.clase}` : L.tags?.unidad;
+      if (ub && groupBy === 'materia') meta.push(escapeHtml(String(ub)));
+      if (L.pages) meta.push(`${escapeHtml(String(L.pages))} págs.`);
+      if (min) meta.push(`≈ ${min} min`);
+      if (!reg && L.audio !== false) meta.push(HP_SVG);
+      if (notes) meta.push(`${notes} nota${notes > 1 ? 's' : ''}`);
+      if (pct != null && pct > 0) meta.push(`${pct}%`);
+      card.innerHTML =
+        `<p class="lect-author"></p><p class="lect-title"></p>` +
+        `<p class="lect-meta">${meta.join('<span class="dot">·</span>')}</p>` +
+        (pct != null && pct > 0
+          ? `<span class="lect-progress"><i style="width:${Math.min(100, pct)}%"></i></span>` : '');
+      card.querySelector('.lect-author').textContent = author;
+      card.querySelector('.lect-title').textContent = title;
+      grid.appendChild(card);
+    }
+    wrap.appendChild(grid);
+  }
+}
+$('#btn-home').addEventListener('click', () => { location.href = './'; });
+
+/* ╔══════════════════════════════════════════════════════════╗
+   ║ 13 · Init                                                  ║
+   ╚══════════════════════════════════════════════════════════╝ */
+(async function boot() {
+  if (!DOC_PARAM) {                        // no document: the library
+    renderHome();
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+    return;
+  }
+  let raw = null, loadedFile = null;
+  if (DOC_PARAM) {
+    const candidates = FILE_PARAM ? [FILE_PARAM] : ['text', 'curated', 'transcript'];
+    for (const f of candidates) {
+      try {
+        const res = await fetch(`lectures/${DOC_PARAM}/${f}.md`, { cache:'no-store' });
+        if (res.ok) {
+          raw = (await res.text()).trim();
+          loadedFile = f + '.md';
+          SLUG = DOC_PARAM + (f === 'text' ? '' : ':' + f);   // separate notes per variant
+          PROJECT = 'Lecturas' + (f === 'text' ? '' : ' · ' + f);
+          break;
+        }
+      } catch {}
+    }
+    if (raw == null) setTimeout(() => toast(`No pude cargar «${DOC_PARAM}» — muestro el texto de ejemplo`), 600);
+  }
+  if (raw == null) raw = $('#src').textContent.trim();
+  loadNotes();
+  loadBookmarks();
+  renderDoc(raw);
+  // migrating paragraph-anchored notes (v3-) to line offsets
+  if (notes.some(n => n.blockIndex != null && n.anchorOffset == null)) {
+    const blks = [...doc.querySelectorAll('.blk')];
+    for (const n of notes) {
+      if (n.blockIndex != null && n.anchorOffset == null) {
+        const b = blks[Math.min(n.blockIndex, blks.length - 1)];
+        if (b) n.anchorOffset = absOffset(b, 0);
+        delete n.blockIndex;
+      }
+    }
+    persist();
+  }
+  buildCbox();
+  applyModeTag();
+  applySize();
+  repaint();
+  // page mode is the default reading mode; scroll only if the user chose it
+  if (prefs.paged !== false) setPaged(true);
+  await initNarration(DOC_PARAM, loadedFile);
+  restoreProgress();
+  // with audio available, narration opens by default (paused, play to
+  // start); an explicit off from the previous session is respected
+  if (nar.ready && !narOn && load(posKey(), null)?.nar !== false) setNar(true);
+  updateBmBtn();
+  // PWA: only in a secure context (https or localhost). The SW no longer
+  // precaches the library — it just keeps visited content as an offline
+  // fallback (network-first) — so there is nothing to announce.
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js')
+      .then((reg) => { if (reg.active) dlog('sw activo'); })
+      .catch(() => {});
+  }
+})().catch((err) => {
+  // a boot failure used to leave a zombie page (text visible, but no
+  // notes, narration or restore, with no message) — fail loudly instead
+  console.error('boot:', err);
+  toast('No se pudo inicializar el reader — recargá la página');
+});
+
+})();
+</script>
+
+</body>
+</html>

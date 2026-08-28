@@ -1,0 +1,11 @@
+{
+  "sentence_overrides": [
+    { "match": "La moral de los idealistas", "spoken": "La moral de los idealistas. Introducción de El hombre mediocre, de José Ingenieros." },
+    { "match": "I. Las luces del camino", "spoken": "Uno. Las luces del camino." },
+    { "match": "II. Los visionarios de la perfección", "spoken": "Dos. Los visionarios de la perfección." },
+    { "match": "III. Los idealistas románticos", "spoken": "Tres. Los idealistas románticos." },
+    { "match": "IV. El idealismo experimental", "spoken": "Cuatro. El idealismo experimental." }
+  ],
+  "substrings": [],
+  "regex": []
+}
